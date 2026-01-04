@@ -1,0 +1,111 @@
+classDiagram
+
+class WeatherDTO {
+  +location
+  +tempC
+  +humidity
+  +windSpeed
+  +windDirection
+  +condition
+  +provider
+  +timestamp
+}
+
+class LocationDTO {
+  +name
+  +country
+  +lat
+  +lon
+}
+
+class ConditionDTO {
+  +code
+  +text
+  +icon
+}
+
+class ForecastDTO {
+  +days
+}
+
+class ForecastDayDTO {
+  +date
+  +minTempC
+  +maxTempC
+  +avgTempC
+  +condition
+}
+
+class WeatherProvider
+WeatherProvider : +getCurrent()
+WeatherProvider : +getForecast()
+
+class OpenMeteoProvider
+OpenMeteoProvider : +getCurrent()
+OpenMeteoProvider : +getForecast()
+
+class WeatherApiProvider
+WeatherApiProvider : +getCurrent()
+WeatherApiProvider : +getForecast()
+
+class OpenWeatherProvider
+OpenWeatherProvider : +getCurrent()
+OpenWeatherProvider : +getForecast()
+
+class WeatherService {
+  +getCurrentWeather()
+  +getForecast()
+}
+
+class WeatherServiceImpl {
+  -provider
+  +getCurrentWeather()
+  +getForecast()
+}
+
+class WeatherController {
+  +getWeather()
+  +getForecast()
+}
+
+class LayerService {
+  -apiClient
+  -factory
+  +getLayers()
+}
+
+class LayerFactory {
+  +getGlyph()
+  +releaseGlyph()
+}
+
+class Glyph {
+  +id
+  +renderParameters
+}
+
+class LayerStrategy
+LayerStrategy : +buildLayer()
+
+class Temperature
+class Wind
+class Precip
+
+WeatherProvider <|.. OpenMeteoProvider
+WeatherProvider <|.. WeatherApiProvider
+WeatherProvider <|.. OpenWeatherProvider
+ProviderFactory --> WeatherProvider
+WeatherServiceImpl --> WeatherProvider
+WeatherService <|.. WeatherServiceImpl
+WeatherController --> WeatherService
+
+LayerService --> WeatherProvider
+LayerService --> LayerFactory
+LayerFactory --> Glyph
+Temperature ..|> LayerStrategy
+Wind ..|> LayerStrategy
+Precip ..|> LayerStrategy
+LayerService --> LayerStrategy
+
+WeatherRaw --> WeatherDTO
+ForecastRaw --> ForecastDTO

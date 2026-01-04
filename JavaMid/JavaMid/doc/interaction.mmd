@@ -1,0 +1,24 @@
+%% interaction.mmd - Diagrama de interacción: Front (Unreal) <-> Mid (Java) <-> API meteorológica
+
+graph LR
+  UE[Unreal Engine - Front]
+  MID[Mid - Java REST API]
+  WEATHER[External Weather API]
+
+  UE -->|HTTP: solicita capas| MID
+  MID -->|REST call| WEATHER
+
+  subgraph MidComponents["Mid (interno)"]
+    C[Controller]
+    S[LayerService]
+    W[WeatherApiClient]
+    F[LayerFactory<br/>Flyweight Cache]
+    ST[LayerStrategy<br/>Estrategias de capa]
+  end
+
+  MID --> MidComponents
+  C --> S
+  S --> W
+  S --> F
+  S --> ST
+  F --> ST

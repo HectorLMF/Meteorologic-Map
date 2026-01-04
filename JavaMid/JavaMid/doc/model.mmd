@@ -1,0 +1,26 @@
+classDiagram
+model_Forecast --> model_ForecastDTO : maps to
+model_Weather --> model_WeatherDTO : maps to
+%% Relaciones internas
+
+%% Clases del paquete com.javamid.model
+class model_Weather {
+class model_ForecastRaw
+class model_WeatherRaw
+}
+  +daily: List~model_WeatherDTO~
+  +temp: double
+}
+  +daily: List~model_Weather~
+class model_Forecast {
+}
+}
+class model_Weather {
+
+
+
+class model_ForecastDTO {
+  +daily: List~model_WeatherDTO~
+}
+class model_WeatherRaw
+class model_ForecastRaw
