@@ -600,3 +600,46 @@
 ``
 </details>
 
+## 2026-01-04T12:40:07.5965538Z - open-meteo.com
+
+**City**: Madrid
+
+- Lat/Lon: 40.4375, -3.6875
+- Temp (C): 9.9
+- Wind (m/s): 5.4
+- Wind Dir (deg): 37
+
+<details>
+<summary>Raw JSON</summary>
+
+``json
+{
+  "latitude" : 40.4375,
+  "longitude" : -3.6875,
+  "generationtime_ms" : 37.4603271484375,
+  "utc_offset_seconds" : 0,
+  "timezone" : "GMT",
+  "timezone_abbreviation" : "GMT",
+  "elevation" : 666.0,
+  "current_weather_units" : {
+    "time" : "iso8601",
+    "interval" : "seconds",
+    "temperature" : "°C",
+    "windspeed" : "km/h",
+    "winddirection" : "°",
+    "is_day" : "",
+    "weathercode" : "wmo code"
+  },
+  "current_weather" : {
+    "time" : "2026-01-04T12:30",
+    "interval" : 900,
+    "temperature" : 9.9,
+    "windspeed" : 5.4,
+    "winddirection" : 37,
+    "is_day" : 1,
+    "weathercode" : 3
+  }
+}
+``
+</details>
+

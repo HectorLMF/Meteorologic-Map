@@ -38,6 +38,10 @@ public class WeatherMapWindow extends JFrame {
     private final JLabel coordsLabel;
     private final JTextArea weatherDataArea;
     private final JTextArea stationDataArea;
+
+    private final JToggleButton windLayerButton;
+    private final JToggleButton precipitationLayerButton;
+    private final JToggleButton temperatureLayerButton;
     
     private transient WeatherStation currentStation;
     private boolean stationLookupInFlight = false;
@@ -128,6 +132,21 @@ public class WeatherMapWindow extends JFrame {
         JScrollPane scrollPane = new JScrollPane(weatherDataArea);
         
         weatherPanel.add(scrollPane, BorderLayout.CENTER);
+
+        // Layers panel
+        JPanel layersPanel = new JPanel();
+        layersPanel.setLayout(new BoxLayout(layersPanel, BoxLayout.Y_AXIS));
+        layersPanel.setBorder(BorderFactory.createTitledBorder("Capas"));
+
+        windLayerButton = new JToggleButton("Viento");
+        precipitationLayerButton = new JToggleButton("Precipitación");
+        temperatureLayerButton = new JToggleButton("Temperatura");
+
+        layersPanel.add(windLayerButton);
+        layersPanel.add(Box.createRigidArea(new Dimension(0, 6)));
+        layersPanel.add(precipitationLayerButton);
+        layersPanel.add(Box.createRigidArea(new Dimension(0, 6)));
+        layersPanel.add(temperatureLayerButton);
         
         // Refresh button
         JButton refreshButton = new JButton("Actualizar Datos");
@@ -136,7 +155,14 @@ public class WeatherMapWindow extends JFrame {
         // Assemble info panel
         infoPanel.add(stationInfoPanel, BorderLayout.NORTH);
         infoPanel.add(weatherPanel, BorderLayout.CENTER);
-        infoPanel.add(refreshButton, BorderLayout.SOUTH);
+
+        JPanel bottomPanel = new JPanel();
+        bottomPanel.setLayout(new BoxLayout(bottomPanel, BoxLayout.Y_AXIS));
+        bottomPanel.add(layersPanel);
+        bottomPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        bottomPanel.add(refreshButton);
+
+        infoPanel.add(bottomPanel, BorderLayout.SOUTH);
         
         // Add components to frame
         add(mapViewer, BorderLayout.CENTER);
