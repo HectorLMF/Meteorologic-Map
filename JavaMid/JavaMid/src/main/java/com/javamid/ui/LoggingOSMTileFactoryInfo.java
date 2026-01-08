@@ -16,7 +16,8 @@ public class LoggingOSMTileFactoryInfo extends OSMTileFactoryInfo {
         if (url != null && url.startsWith("http://")) {
             url = "https://" + url.substring("http://".length());
         }
-        System.out.printf("[TileURL] z=%d x=%d y=%d -> %s%n", zoom, x, y, url);
+        // Log desactivado temporalmente para debug
+        // System.out.printf("[TileURL] z=%d x=%d y=%d -> %s%n", zoom, x, y, url);
         return url;
     }
 }

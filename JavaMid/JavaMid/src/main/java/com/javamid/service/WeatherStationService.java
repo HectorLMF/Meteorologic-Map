@@ -1,18 +1,10 @@
 package com.javamid.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javamid.client.MeteostatApiClient;
 import com.javamid.model.WeatherStation;
-import com.javamid.util.Config;
 import com.javamid.util.TimedCache;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.IOException;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -21,25 +13,11 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Service to find the nearest weather station to given coordinates
+ * Service to find the nearest weather station to given coordinates using Meteostat
  */
 public class WeatherStationService {
 
     private static final Logger LOGGER = Logger.getLogger(WeatherStationService.class.getName());
-
-    /**
-     * Provider selection:
-     * - meteostat (default): only Meteostat (RapidAPI)
-     * - openweather: only OpenWeather
-     * - auto: prefer Meteostat, fall back to OpenWeather
-     */
-    private static final String DEFAULT_PROVIDER = "meteostat";
-    private static final String ENV_PROVIDER = "WEATHER_PROVIDER";
-    
-    private final ObjectMapper mapper = new ObjectMapper();
-    private final String apiKey;
-    private static final String FIND_API_URL = "https://api.openweathermap.org/data/2.5/find";
-    private static final int DEFAULT_NEARBY_COUNT = 20;
 
     private static final String JSON_DATA = "data";
     private static final String JSON_COUNTRY = "country";
@@ -47,61 +25,28 @@ public class WeatherStationService {
     private final MeteostatApiClient meteostatClient;
     private final TimedCache<String, WeatherStation> meteostatMetaCache = new TimedCache<>();
     private final TimedCache<String, List<WeatherStation>> meteostatNearbyCache = new TimedCache<>();
-    private final String provider;
     
     public WeatherStationService() {
-        this.apiKey = Config.firstNonBlank(Config.get("openweather.api.key"), System.getenv("OPENWEATHER_API_KEY"));
-        this.meteostatClient = new MeteostatApiClient();
-        this.provider = normalizeProvider(Config.firstNonBlank(Config.get("weather.provider"), System.getenv(ENV_PROVIDER)));
+        this(null);
     }
     
-    public WeatherStationService(String apiKey) {
-        this.apiKey = apiKey;
-        this.meteostatClient = new MeteostatApiClient();
-        this.provider = normalizeProvider(Config.firstNonBlank(Config.get("weather.provider"), System.getenv(ENV_PROVIDER)));
-    }
-
-    private static String normalizeProvider(String value) {
-        if (value == null || value.isBlank()) {
-            return DEFAULT_PROVIDER;
-        }
-        String v = value.trim().toLowerCase();
-        if ("meteostat".equals(v) || "openweather".equals(v) || "auto".equals(v)) {
-            return v;
-        }
-        return DEFAULT_PROVIDER;
+    public WeatherStationService(String meteostatKey) {
+        this.meteostatClient = new MeteostatApiClient(meteostatKey);
     }
     
     /**
-     * Find the nearest weather station to the given coordinates
+     * Find the nearest weather station to the given coordinates using Meteostat
      * @param latitude Center latitude
      * @param longitude Center longitude
      * @return The nearest WeatherStation or null if not found
      */
     public WeatherStation findNearestStation(double latitude, double longitude) {
-        if ("openweather".equals(provider)) {
-            if (this.apiKey == null || this.apiKey.isBlank()) {
-                LOGGER.info("OPENWEATHER_API_KEY not set - skipping station lookup");
-                return null;
-            }
-            return findNearestStationOpenWeather(latitude, longitude);
+        if (!meteostatClient.isConfigured()) {
+            LOGGER.info("Meteostat key not configured (set 'meteostat.rapidapi.key' in javamid.local.properties/application-local.properties or env METEOSTAT_RAPIDAPI_KEY/RAPIDAPI_KEY) - skipping station lookup");
+            return null;
         }
-
-        // Default: Meteostat only (RapidAPI)
-        if (meteostatClient.isConfigured()) {
-            return findNearestStationMeteostat(latitude, longitude);
-        }
-
-        if ("auto".equals(provider)) {
-            if (this.apiKey == null || this.apiKey.isBlank()) {
-                LOGGER.info("No API keys configured (set 'meteostat.rapidapi.key' in javamid.local.properties/application-local.properties or env METEOSTAT_RAPIDAPI_KEY/RAPIDAPI_KEY; and/or 'openweather.api.key'/env OPENWEATHER_API_KEY) - skipping station lookup");
-                return null;
-            }
-            return findNearestStationOpenWeather(latitude, longitude);
-        }
-
-        LOGGER.info("Meteostat key not configured (set 'meteostat.rapidapi.key' in javamid.local.properties/application-local.properties or env METEOSTAT_RAPIDAPI_KEY/RAPIDAPI_KEY) - skipping station lookup");
-        return null;
+        
+        return findNearestStationMeteostat(latitude, longitude);
     }
 
     private WeatherStation findNearestStationMeteostat(double latitude, double longitude) {
@@ -142,35 +87,15 @@ public class WeatherStationService {
 
             return nearest;
 
+        } catch (com.javamid.client.MeteostatApiException e) {
+            int code = e.getStatusCode();
+            LOGGER.log(Level.WARNING, () -> "Meteostat lookup failed (" + code + "): " + e.getMessage());
+            return null;
         } catch (Exception e) {
-            if ("auto".equals(provider)) {
-                LOGGER.log(Level.WARNING, e, () -> "Meteostat lookup failed; trying OpenWeather because WEATHER_PROVIDER=auto: " + e.getMessage());
-                if (this.apiKey == null || this.apiKey.isBlank()) {
-                    return null;
-                }
-                return findNearestStationOpenWeather(latitude, longitude);
-            }
-
-            LOGGER.log(Level.WARNING, e, () -> "Meteostat lookup failed: " + e.getMessage());
+            // Other unexpected errors
+            LOGGER.log(Level.WARNING, e, () -> "Station lookup error: " + e.getMessage());
             return null;
         }
-    }
-
-    private WeatherStation findNearestStationOpenWeather(double latitude, double longitude) {
-        List<WeatherStation> candidates = findNearbyStationsOpenWeather(latitude, longitude, DEFAULT_NEARBY_COUNT);
-        if (candidates.isEmpty()) {
-            return null;
-        }
-
-        WeatherStation nearest = candidates.stream()
-                .min(Comparator.comparingDouble(ws -> ws.distanceTo(latitude, longitude)))
-                .orElse(null);
-
-        if (nearest != null) {
-            nearest.setDistanceKm(nearest.distanceTo(latitude, longitude));
-        }
-
-        return nearest;
     }
 
     private List<WeatherStation> parseMeteostatNearbyStations(JsonNode root) {
@@ -271,117 +196,23 @@ public class WeatherStationService {
     }
     
     /**
-     * Find multiple nearby weather stations
+     * Find multiple nearby weather stations using Meteostat
      * @param latitude Center latitude
      * @param longitude Center longitude
      * @param count Number of stations to find
      * @return List of nearby weather stations
      */
     public List<WeatherStation> findNearbyStations(double latitude, double longitude, int count) {
-        if ("openweather".equals(provider)) {
-            return findNearbyStationsOpenWeather(latitude, longitude, count);
-        }
-
-        if (meteostatClient.isConfigured()) {
-            try {
-                JsonNode root = meteostatClient.getNearbyStations(latitude, longitude, count, 100000);
-                return parseMeteostatNearbyStations(root);
-            } catch (Exception e) {
-                if ("auto".equals(provider)) {
-                    LOGGER.log(Level.WARNING, e, () -> "Meteostat nearby failed; trying OpenWeather because WEATHER_PROVIDER=auto: " + e.getMessage());
-                    return findNearbyStationsOpenWeather(latitude, longitude, count);
-                }
-                LOGGER.log(Level.WARNING, e, () -> "Meteostat nearby failed: " + e.getMessage());
-                return List.of();
-            }
-        }
-
-        if ("auto".equals(provider)) {
-            return findNearbyStationsOpenWeather(latitude, longitude, count);
-        }
-
-        return List.of();
-    }
-
-    private List<WeatherStation> findNearbyStationsOpenWeather(double latitude, double longitude, int count) {
-        List<WeatherStation> stations = new ArrayList<>();
-
-        if (this.apiKey == null || this.apiKey.isBlank()) {
-            LOGGER.info("OPENWEATHER_API_KEY not set - skipping station lookup");
-            return stations;
+        if (!meteostatClient.isConfigured()) {
+            return List.of();
         }
 
         try {
-            HttpURLConnection conn = openOpenWeatherConnection(latitude, longitude, count);
-            int responseCode = conn.getResponseCode();
-            String responseBody = readBody(conn, responseCode);
-            if (responseCode >= 200 && responseCode < 300) {
-                stations.addAll(parseOpenWeatherFind(responseBody, latitude, longitude));
-            }
-
+            JsonNode root = meteostatClient.getNearbyStations(latitude, longitude, count, 100000);
+            return parseMeteostatNearbyStations(root);
         } catch (Exception e) {
-            LOGGER.log(Level.WARNING, e, () -> "OpenWeather nearby lookup failed: " + e.getMessage());
+            LOGGER.log(Level.WARNING, e, () -> "Meteostat nearby failed: " + e.getMessage());
+            return List.of();
         }
-
-        return stations;
-    }
-
-    private HttpURLConnection openOpenWeatherConnection(double latitude, double longitude, int count) throws IOException {
-        String urlString = FIND_API_URL +
-                "?lat=" + latitude +
-                "&lon=" + longitude +
-                "&cnt=" + count +
-                "&appid=" + apiKey;
-
-        HttpURLConnection conn = (HttpURLConnection) URI.create(urlString).toURL().openConnection();
-        conn.setRequestMethod("GET");
-        conn.setRequestProperty("Accept", "application/json");
-        conn.setConnectTimeout(10000);
-        conn.setReadTimeout(15000);
-        return conn;
-    }
-
-    private String readBody(HttpURLConnection conn, int responseCode) throws IOException {
-        BufferedReader in = new BufferedReader(new InputStreamReader(
-                responseCode >= 400 ? conn.getErrorStream() : conn.getInputStream(),
-                StandardCharsets.UTF_8));
-
-        StringBuilder response = new StringBuilder();
-        String inputLine;
-        while ((inputLine = in.readLine()) != null) {
-            response.append(inputLine);
-        }
-        in.close();
-        return response.toString();
-    }
-
-    private List<WeatherStation> parseOpenWeatherFind(String responseBody, double latitude, double longitude) throws IOException {
-        List<WeatherStation> stations = new ArrayList<>();
-        JsonNode root = mapper.readTree(responseBody);
-        JsonNode list = root.get("list");
-        if (list == null || !list.isArray()) {
-            return stations;
-        }
-
-        for (JsonNode station : list) {
-            WeatherStation ws = new WeatherStation();
-            ws.setId(station.get("id").asText());
-            ws.setName(station.get("name").asText());
-
-            JsonNode coord = station.get("coord");
-            ws.setLatitude(coord.get("lat").asDouble());
-            ws.setLongitude(coord.get("lon").asDouble());
-
-            JsonNode sys = station.get("sys");
-            if (sys != null && sys.has(JSON_COUNTRY)) {
-                ws.setCountry(sys.get(JSON_COUNTRY).asText());
-            }
-
-            ws.setDistanceKm(ws.distanceTo(latitude, longitude));
-            ws.setSource("openweather");
-            stations.add(ws);
-        }
-
-        return stations;
     }
 }

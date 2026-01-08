@@ -2,13 +2,13 @@
 
 ## Interfaz Gráfica de Mapa Meteorológico
 
-Esta aplicación proporciona una interfaz gráfica en Swing que muestra un mapa interactivo de OpenStreetMaps. Al navegar por el mapa, automáticamente busca la estación meteorológica más cercana al centro y muestra sus datos meteorológicos en tiempo real.
+Esta aplicación proporciona una interfaz gráfica en Swing que muestra un mapa interactivo de OpenStreetMaps. Al navegar por el mapa, automáticamente busca la estación meteorológica más cercana al centro y muestra sus datos meteorológicos en tiempo real utilizando la API de Meteostat.
 
 ## Características
 
 - **Mapa Interactivo**: Visualización de OpenStreetMaps con navegación completa (pan, zoom)
 - **Búsqueda Automática**: Al mover el mapa, busca automáticamente la estación meteorológica más cercana al centro
-- **Datos en Tiempo Real**: Muestra datos meteorológicos actualizados de la estación seleccionada
+- **Datos en Tiempo Real**: Muestra datos meteorológicos actualizados de la estación seleccionada desde Meteostat
 - **Interfaz Intuitiva**: Panel lateral con información detallada de temperatura, humedad, viento, etc.
 
 ## Componentes Principales
@@ -23,7 +23,7 @@ Representa una estación meteorológica con:
 Servicio para buscar estaciones meteorológicas:
 - `findNearestStation(lat, lon)`: Encuentra la estación más cercana a unas coordenadas
 - `findNearbyStations(lat, lon, count)`: Encuentra múltiples estaciones cercanas
-- Utiliza la API de OpenWeatherMap (endpoint `/find`)
+- Utiliza la API de Meteostat (RapidAPI)
 
 ### 3. `WeatherMapWindow` (UI)
 Ventana principal de la aplicación:
@@ -31,11 +31,12 @@ Ventana principal de la aplicación:
 - Panel de información con datos de la estación y clima
 - Listeners para detectar movimiento del mapa
 - Actualización automática de datos al navegar
+- Campo para ingresar API Key de Meteostat
 
 ## Uso
 
 ### Requisitos Previos
-1. Tener configurada la variable de entorno `OPENWEATHER_API_KEY` con tu clave de API de OpenWeatherMap
+1. Obtener una API Key de RapidAPI para Meteostat: https://rapidapi.com/meteostat/api/meteostat
 2. Java 11 o superior
 3. Maven para gestión de dependencias
 
@@ -73,9 +74,9 @@ UI Layer (Swing)
     ↓
 Service Layer (WeatherStationService)
     ↓
-Client Layer (OpenWeatherApiClient)
+Client Layer (MeteostatApiClient)
     ↓
-External API (OpenWeatherMap)
+External API (Meteostat via RapidAPI)
 ```
 
 ## Dependencias Agregadas

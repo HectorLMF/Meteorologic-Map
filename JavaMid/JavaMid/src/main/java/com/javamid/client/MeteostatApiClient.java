@@ -3,6 +3,9 @@ package com.javamid.client;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javamid.util.Config;
+import com.javamid.util.ApiKeyStore;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -21,25 +24,71 @@ public class MeteostatApiClient {
     private final String apiKey;
     private final String baseUrl;
     private final String host;
+    private final String providedApiKey;
+    private static final Logger LOGGER = Logger.getLogger(MeteostatApiClient.class.getName());
 
     public MeteostatApiClient() {
-        this(Config.firstNonBlank(
-                Config.get("meteostat.rapidapi.key"),
-                System.getenv("METEOSTAT_RAPIDAPI_KEY"),
-                System.getenv("RAPIDAPI_KEY"),
-                System.getenv("X_RAPIDAPI_KEY")),
-            Config.firstNonBlank(
-                Config.get("meteostat.baseUrl"),
-                System.getenv("METEOSTAT_BASE_URL")),
-            Config.firstNonBlank(
-                Config.get("meteostat.rapidapi.host"),
-                System.getenv("METEOSTAT_RAPIDAPI_HOST")));
+        this(null);
     }
 
-    public MeteostatApiClient(String apiKey, String baseUrl, String host) {
-        this.apiKey = (apiKey == null || apiKey.isBlank()) ? null : apiKey;
-        this.baseUrl = (baseUrl == null || baseUrl.isBlank()) ? DEFAULT_BASE_URL : baseUrl;
-        this.host = (host == null || host.isBlank()) ? DEFAULT_HOST : host;
+    public MeteostatApiClient(String providedKey) {
+        this.providedApiKey = providedKey;
+        this.apiKey = resolveApiKey();
+        this.baseUrl = Config.firstNonBlank(
+                Config.get("meteostat.baseUrl"),
+                System.getenv("METEOSTAT_BASE_URL"),
+                DEFAULT_BASE_URL);
+        this.host = Config.firstNonBlank(
+                Config.get("meteostat.rapidapi.host"),
+                System.getenv("METEOSTAT_RAPIDAPI_HOST"),
+                DEFAULT_HOST);
+    }
+
+    private String resolveApiKey() {
+        // Priority 1: GUI-provided key (exclusively from UI)
+        if (providedApiKey != null && !providedApiKey.isBlank()) {
+            LOGGER.log(Level.INFO, () -> "Using Meteostat API key from GUI");
+            return sanitizeKey(providedApiKey);
+        }
+        
+        // Priority 2: Config file (for backwards compatibility)
+        try {
+            String fromFile = ApiKeyStore.readLabeledKey("meteostat");
+            if (fromFile == null || fromFile.isBlank()) {
+                fromFile = ApiKeyStore.readKeyFromNearestParent();
+            }
+            if (fromFile != null && !fromFile.isBlank()) {
+                LOGGER.log(Level.INFO, () -> "Using Meteostat API key from Apikey.conf");
+                return sanitizeKey(fromFile);
+            }
+            String fromProps = Config.get("meteostat.rapidapi.key");
+            if (fromProps != null && !fromProps.isBlank()) {
+                LOGGER.log(Level.INFO, () -> "Using Meteostat API key from application properties");
+                return sanitizeKey(fromProps);
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error while resolving Meteostat API key", e);
+        }
+        return null;
+    }
+
+    private static String firstNonBlankEnv(String... names) {
+        if (names == null) return null;
+        for (String n : names) {
+            String v = System.getenv(n);
+            if (v != null && !v.isBlank()) return v;
+        }
+        return null;
+    }
+
+    private static String sanitizeKey(String key) {
+        if (key == null) return null;
+        String k = key.trim();
+        // strip possible surrounding quotes
+        if ((k.startsWith("\"") && k.endsWith("\"")) || (k.startsWith("'") && k.endsWith("'"))) {
+            k = k.substring(1, k.length()-1).trim();
+        }
+        return k;
     }
 
     public boolean isConfigured() {
@@ -107,8 +156,6 @@ public class MeteostatApiClient {
             // RapidAPI headers
             conn.setRequestProperty("X-RapidAPI-Key", this.apiKey);
             conn.setRequestProperty("X-RapidAPI-Host", this.host);
-            conn.setRequestProperty("x-rapidapi-key", this.apiKey);
-            conn.setRequestProperty("x-rapidapi-host", this.host);
             conn.setConnectTimeout(10000);
             conn.setReadTimeout(15000);
 
@@ -130,7 +177,7 @@ public class MeteostatApiClient {
 
             JsonNode err = tryParseJson(response.toString());
             String detail = err != null ? err.toString() : response.toString();
-            throw new MeteostatApiException("Meteostat API error (HTTP " + responseCode + "): " + detail);
+            throw new MeteostatApiException("Meteostat API error (HTTP " + responseCode + "): " + detail, responseCode);
 
         } catch (MeteostatApiException e) {
             throw e;
