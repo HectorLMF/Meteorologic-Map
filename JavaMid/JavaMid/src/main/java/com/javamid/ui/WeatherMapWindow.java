@@ -5,6 +5,13 @@ import com.javamid.config.MapConfig;
 import com.javamid.model.WeatherStation;
 import com.javamid.service.StationManager;
 import com.javamid.service.WeatherDataManager;
+import com.javamid.client.WeatherClient;
+import com.javamid.client.WeatherClientFactory;
+import com.javamid.ui.overlay.OverlayManager;
+import com.javamid.ui.overlay.OverlayMode;
+import com.javamid.ui.presenter.WeatherMapPresenter;
+import com.javamid.service.AsyncExecutor;
+import com.javamid.util.EventBus;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.*;
 import org.jxmapviewer.input.*;
@@ -37,6 +44,10 @@ public class WeatherMapWindow extends JFrame {
     private final TemperatureOverlayPanel temperatureOverlayPanel;
     private final StationMarkerPanel stationMarkerPanel;
     private final LegendPanel legendPanel;
+    private final OverlayManager overlayManager;
+    private final WeatherMapPresenter presenter;
+    private final WeatherClient weatherClient;
+    private final EventBus eventBus = new EventBus();
     
     // UI Component references (created by factory)
     private UIComponentFactory.StationInfoPanelComponents stationInfoComponents;
@@ -91,6 +102,12 @@ public class WeatherMapWindow extends JFrame {
         // Legend (create early so layered pane can place it)
         legendPanel = new LegendPanel();
         legendPanel.setVisible(false);
+
+        // Overlay manager + presenter + client factory
+        overlayManager = new OverlayManager();
+        overlayManager.register(OverlayMode.HUMIDITY, humidityOverlayPanel);
+        overlayManager.register(OverlayMode.TEMPERATURE, temperatureOverlayPanel);
+        weatherClient = WeatherClientFactory.getDefault();
         
         // Setup manager callbacks
         setupManagerCallbacks();
@@ -100,6 +117,19 @@ public class WeatherMapWindow extends JFrame {
         stationInfoComponents = UIComponentFactory.createStationInfoPanel();
         weatherInfoComponents = UIComponentFactory.createWeatherInfoPanel();
         timeSelectorComponents = UIComponentFactory.createTimeSelectorPanel(this::onTimeSliderChanged);
+
+        // Now that UI component references exist, create presenter
+        presenter = new WeatherMapPresenter(
+            overlayManager,
+            weatherDataManager,
+            stationManager,
+            windOverlayPanel,
+            humidityOverlayPanel,
+            temperatureOverlayPanel,
+            timeSelectorComponents,
+            weatherInfoComponents,
+            weatherClient
+        );
         
         // Setup time selector button actions
         setupTimeSelectorButtons();
@@ -128,6 +158,22 @@ public class WeatherMapWindow extends JFrame {
         // Add map listeners
         mapViewer.addPropertyChangeListener("center", (PropertyChangeListener) evt -> scheduleMapMoved());
         mapViewer.addPropertyChangeListener("zoom", (PropertyChangeListener) evt -> scheduleMapMoved());
+
+        // Event subscriptions
+        eventBus.subscribe("StationsLoaded", evt -> {
+            @SuppressWarnings("unchecked")
+            List<WeatherStation> stations = (List<WeatherStation>) evt.getNewValue();
+            presenter.onStationsLoaded(stations);
+            // try to keep active selection consistent
+            WeatherStation activeStation = stationMarkerPanel.getActiveStation();
+            if (activeStation != null) {
+                stationManager.selectStation(activeStation);
+            }
+        });
+        eventBus.subscribe("WeatherSnapshotUpdated", evt -> {
+            WeatherDataManager.WeatherSnapshot snapshot = (WeatherDataManager.WeatherSnapshot) evt.getNewValue();
+            presenter.onWeatherSnapshotUpdated(snapshot);
+        });
         
         // Initial station search
         SwingUtilities.invokeLater(this::scheduleMapMoved);
@@ -309,13 +355,26 @@ public class WeatherMapWindow extends JFrame {
     
     private void setupManagerCallbacks() {
         // Station manager callbacks
-        stationManager.setOnStationsLoaded(this::onStationsLoaded);
+        stationManager.setOnStationsLoaded(stations -> {
+            if (stations == null || stations.isEmpty()) {
+                stationInfoComponents.stationLabel.setText("No se encontraron estaciones cercanas");
+                stationInfoComponents.dataArea.setText("");
+                weatherDataArea.setText("");
+                stationMarkerPanel.clearStations();
+                windOverlayPanel.setStations(new java.util.ArrayList<>());
+                humidityOverlayPanel.setStations(new java.util.ArrayList<>());
+                temperatureOverlayPanel.setStations(new java.util.ArrayList<>());
+                return;
+            }
+            stationMarkerPanel.setStations(stations);
+            eventBus.publish("StationsLoaded", stations);
+        });
         stationManager.setOnStationSelected(this::onStationSelected);
         stationManager.setOnStatusUpdate(msg -> stationInfoComponents.stationLabel.setText(msg));
         
         // Weather data manager callbacks
         weatherDataManager.setOnWeatherTextUpdate(text -> weatherDataArea.setText(text));
-        weatherDataManager.setOnWeatherSnapshotUpdate(this::updateWeatherSnapshot);
+        weatherDataManager.setOnWeatherSnapshotUpdate(snapshot -> eventBus.publish("WeatherSnapshotUpdated", snapshot));
     }
     
     private void setupTimeSelectorButtons() {
@@ -362,95 +421,9 @@ public class WeatherMapWindow extends JFrame {
         }
     }
     
-    private void onStationsLoaded(List<WeatherStation> stations) {
-        if (stations == null || stations.isEmpty()) {
-            stationInfoComponents.stationLabel.setText("No se encontraron estaciones cercanas");
-            stationInfoComponents.dataArea.setText("");
-            weatherDataArea.setText("");
-            stationMarkerPanel.clearStations();
-            windOverlayPanel.setStations(new java.util.ArrayList<>());
-            humidityOverlayPanel.setStations(new java.util.ArrayList<>());
-            temperatureOverlayPanel.setStations(new java.util.ArrayList<>());
-            return;
-        }
-        
-        stationMarkerPanel.setStations(stations);
-        windOverlayPanel.setStations(stations);
-        humidityOverlayPanel.setStations(stations);
-        temperatureOverlayPanel.setStations(stations);
-        
-        // Cargar humedad de todas las estaciones en segundo plano
-        loadHumidityForAllStations(stations);
-        // (Opcional) temperatura y precipitación pueden cargarse de forma similar si se requiere
-        
-        WeatherStation activeStation = stationMarkerPanel.getActiveStation();
-        if (activeStation != null) {
-            stationManager.selectStation(activeStation);
-        }
-    }
+    // StationsLoaded handled by event subscription above
     
-    private void loadHumidityForAllStations(List<WeatherStation> stations) {
-        if (stations == null || stations.isEmpty()) {
-            LOGGER.info("No stations to load humidity for");
-            return;
-        }
-        
-        LOGGER.info("Starting humidity load for " + stations.size() + " stations");
-        
-        int loadedCount = 0;
-        for (WeatherStation station : stations) {
-            // Skip if already loaded
-            if (humidityOverlayPanel.hasHumidityData(station.getId())) {
-                continue;
-            }
-            
-            loadedCount++;
-            new SwingWorker<Double, Void>() {
-                @Override
-                protected Double doInBackground() throws Exception {
-                    try {
-                        LocalDate end = LocalDate.now().minusDays(1);
-                        LocalDate start = end;
-                        JsonNode response = new com.javamid.client.OpenMeteoClient().getHistoricalWeather(
-                            station.getLatitude(), station.getLongitude(), start, end);
-                        
-                        if (response != null && response.has("hourly")) {
-                            JsonNode hourly = response.get("hourly");
-                            if (hourly.has("relative_humidity_2m")) {
-                                JsonNode humidityArray = hourly.get("relative_humidity_2m");
-                                if (humidityArray.size() > 0) {
-                                    int lastIndex = humidityArray.size() - 1;
-                                    return humidityArray.get(lastIndex).asDouble();
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        LOGGER.log(Level.WARNING, "Error fetching humidity for station " + station.getId() + " (" + 
-                                   station.getLatitude() + "," + station.getLongitude() + ")", e);
-                    }
-                    return null;
-                }
-                
-                @Override
-                protected void done() {
-                    try {
-                        Double humidity = get();
-                        if (humidity != null) {
-                            LOGGER.info("Humidity loaded for station " + station.getId() + ": " + 
-                                       String.format("%.1f%%", humidity));
-                            humidityOverlayPanel.setStationHumidity(station.getId(), humidity);
-                        } else {
-                            LOGGER.warning("No humidity data returned for station " + station.getId());
-                        }
-                    } catch (Exception e) {
-                        LOGGER.log(Level.WARNING, "Error loading humidity for station " + station.getId(), e);
-                    }
-                }
-            }.execute();
-        }
-        
-        LOGGER.info("Queued humidity load for " + loadedCount + " new stations");
-    }
+    // Batch loaders and overlay station wiring now handled by presenter
     
     private void onStationSelected(WeatherStation station) {
         if (station == null) {
@@ -478,118 +451,14 @@ public class WeatherMapWindow extends JFrame {
         
         // Actualizar el panel superior inmediatamente con datos de la estación
         LOGGER.info("Llamando a updateTopPanelForStation con: " + station.getId());
-        updateTopPanelForStation(station);
+        presenter.updateTopPanelForStation(station);
         
         // Cargar datos meteorológicos en background
         LOGGER.info("Llamando a updateWeatherData");
         updateWeatherData();
     }
     
-    private void updateTopPanelForStation(WeatherStation station) {
-        LOGGER.info("[UPDATE_TOP_PANEL] Estación: " + station.getId() + " - " + station.getName());
-        
-        // Mostrar datos disponibles inmediatamente
-        weatherInfoComponents.temperatureLabel.setText("Temp: --");
-        weatherInfoComponents.humidityLabel.setText("Humedad: --%");
-        weatherInfoComponents.windLabel.setText(String.format("Viento: %.0f° (cargando...)", lastWindDeg));
-        weatherInfoComponents.windCompass.setWindDirection(lastWindDeg);
-        
-        LOGGER.info("[UPDATE_TOP_PANEL] Reseté labels, ahora cargando datos...");
-        
-        // CRÍTICO: Hacer copia final de la estación para evitar problemas de closure
-        final String stationId = station.getId();
-        final String stationName = station.getName();
-        final double lat = station.getLatitude();
-        final double lon = station.getLongitude();
-        
-        LOGGER.info("[UPDATE_TOP_PANEL] Variables finales: id=" + stationId + ", name=" + stationName + 
-                   ", lat=" + lat + ", lon=" + lon);
-        
-        // Cargar temperatura y humedad de la estación en background
-        new SwingWorker<Void, Void>() {
-            @Override
-            protected Void doInBackground() throws Exception {
-                try {
-                    LocalDate end = LocalDate.now().minusDays(1);
-                    LocalDate start = end.minusDays(6);  // Últimos 7 días para mejor datos
-                    
-                    LOGGER.info("[WORKER] Iniciando carga para: " + stationId + 
-                               " (" + stationName + ") " +
-                               "(" + lat + ", " + lon + ")" +
-                               " del " + start + " al " + end);
-                    
-                    JsonNode response = new com.javamid.client.OpenMeteoClient().getHistoricalWeather(
-                        lat, lon, start, end);
-                    
-                    if (response != null && response.has("hourly")) {
-                        LOGGER.info("[WORKER] Respuesta recibida para " + stationId + ", procesando...");
-                        JsonNode hourly = response.get("hourly");
-                        
-                        // Obtener temperatura - promediar los últimos 6 valores disponibles
-                        if (hourly.has("temperature_2m")) {
-                            JsonNode tempArray = hourly.get("temperature_2m");
-                            LOGGER.info("[WORKER] Temperatura array size: " + tempArray.size() + " para " + stationId);
-                            if (tempArray.size() > 0) {
-                                double tempSum = 0;
-                                int tempCount = 0;
-                                int startIdx = Math.max(0, tempArray.size() - 6);
-                                for (int i = startIdx; i < tempArray.size(); i++) {
-                                    tempSum += tempArray.get(i).asDouble();
-                                    tempCount++;
-                                }
-                                Double temperature = tempCount > 0 ? tempSum / tempCount : null;
-                                if (temperature != null) {
-                                    LOGGER.info("[WORKER] Temperatura calculada para " + stationId + " (" + stationName + "): " + 
-                                               String.format("%.1f°C", temperature));
-                                    SwingUtilities.invokeLater(() -> {
-                                        LOGGER.info("[WORKER-EDT] Actualizando UI con temperatura: " + 
-                                                   String.format("%.1f°C para %s", temperature, stationId));
-                                        weatherInfoComponents.temperatureLabel.setText(
-                                            String.format("Temp: %.1f°C", temperature));
-                                        temperatureOverlayPanel.setStationTemperature(stationId, temperature);
-                                    });
-                                }
-                            }
-                        }
-                        
-                        // Obtener humedad - promediar los últimos 6 valores disponibles
-                        if (hourly.has("relative_humidity_2m")) {
-                            JsonNode humidityArray = hourly.get("relative_humidity_2m");
-                            LOGGER.info("[WORKER] Humedad array size: " + humidityArray.size() + " para " + stationId);
-                            if (humidityArray.size() > 0) {
-                                double humiditySum = 0;
-                                int humidityCount = 0;
-                                int startIdx = Math.max(0, humidityArray.size() - 6);
-                                for (int i = startIdx; i < humidityArray.size(); i++) {
-                                    humiditySum += humidityArray.get(i).asDouble();
-                                    humidityCount++;
-                                }
-                                Double humidity = humidityCount > 0 ? humiditySum / humidityCount : null;
-                                if (humidity != null) {
-                                    LOGGER.info("[WORKER] Humedad calculada para " + stationId + " (" + stationName + "): " + 
-                                               String.format("%.0f%%", humidity));
-                                    SwingUtilities.invokeLater(() -> {
-                                        LOGGER.info("[WORKER-EDT] Actualizando UI con humedad: " + 
-                                                   String.format("%.0f%% para %s", humidity, stationId));
-                                        weatherInfoComponents.humidityLabel.setText(
-                                            String.format("Humedad: %.0f%%", humidity));
-                                        humidityOverlayPanel.setStationHumidity(stationId, humidity);
-                                    });
-                                }
-                            }
-                        }
-
-                    } else {
-                        LOGGER.warning("[WORKER] No se obtuvieron datos de OpenMeteo para " + stationId);
-                    }
-
-                } catch (Exception e) {
-                    LOGGER.log(Level.WARNING, "Error loading weather data for station " + station.getId(), e);
-                }
-                return null;
-            }
-        }.execute();
-    }
+    // moved to presenter.updateTopPanelForStation
     
     private void displayStationData(WeatherStation station) {
         StringBuilder sb = new StringBuilder();
@@ -619,87 +488,9 @@ public class WeatherMapWindow extends JFrame {
         stationInfoComponents.dataArea.setText(sb.toString());
     }
     
-    private void updateWeatherData() {
-        WeatherStation currentStation = stationManager.getActiveStation();
-        if (currentStation == null) return;
-        
-        weatherDataManager.fetchWeatherForStation(currentStation);
-        
-        // Load wind data for visible stations
-        List<WeatherStation> visibleStations = windOverlayPanel.getVisibleStations();
-        if (visibleStations != null && !visibleStations.isEmpty()) {
-            List<WeatherStation> limitedStations = visibleStations.stream()
-                .limit(MapConfig.MAX_WIND_DATA_STATIONS)
-                .collect(java.util.stream.Collectors.toList());
-            
-            weatherDataManager.fetchWindDataForStations(limitedStations, windOverlayPanel);
-        }
-        
-        // Update time slider if data is available
-        if (weatherDataManager.hasWeatherData()) {
-            int maxIndex = weatherDataManager.getMaxTimeIndex();
-            timeSelectorComponents.slider.setMinimum(0);
-            timeSelectorComponents.slider.setMaximum(maxIndex);
-            timeSelectorComponents.slider.setValue(maxIndex);
-            timeSelectorComponents.slider.setEnabled(true);
-            timeSelectorComponents.panel.setVisible(true);
-        }
-    }
+    private void updateWeatherData() { presenter.updateWeatherData(); }
     
-    private void updateWeatherSnapshot(WeatherDataManager.WeatherSnapshot snapshot) {
-        // Asegurar que todas las actualizaciones de UI y overlays ocurren en EDT
-        SwingUtilities.invokeLater(() -> {
-            timeSelectorComponents.label.setText("Hora: " + snapshot.time);
-
-            if (snapshot.temperature != null) {
-                weatherInfoComponents.temperatureLabel.setText(
-                    String.format("Temp: %.1f°C", snapshot.temperature));
-                // Actualizar temperatura en overlay si está activo
-                WeatherStation currentStationTemp = stationManager.getActiveStation();
-                if (currentStationTemp != null) {
-                    temperatureOverlayPanel.setStationTemperature(currentStationTemp.getId(), snapshot.temperature);
-                }
-            } else {
-                weatherInfoComponents.temperatureLabel.setText("Temp: N/A");
-            }
-
-            if (snapshot.humidity != null) {
-                weatherInfoComponents.humidityLabel.setText(
-                    String.format("Humedad: %.0f%%", snapshot.humidity));
-
-                // Actualizar humedad en el overlay si está activo
-                WeatherStation currentStation = stationManager.getActiveStation();
-                if (currentStation != null) {
-                    humidityOverlayPanel.setStationHumidity(currentStation.getId(), snapshot.humidity);
-                }
-            } else {
-                weatherInfoComponents.humidityLabel.setText("Humedad: N/A");
-            }
-
-            if (snapshot.hasWindData()) {
-                lastWindSpeed = snapshot.windSpeedMs;
-                lastWindDeg = snapshot.windDirectionDeg;
-                updateWindDirectionLabel(snapshot.windDirectionDeg, snapshot.windSpeedMs);
-
-                WeatherStation currentStation = stationManager.getActiveStation();
-                if (currentStation != null) {
-                    windOverlayPanel.setStationWind(currentStation.getId(),
-                        snapshot.windSpeedMs, snapshot.windDirectionDeg);
-                }
-
-                // Reiniciar animación de partículas con la nueva dirección/velocidad si la capa está activa
-                if (layersComponents.windButton.isSelected()) {
-                    windOverlayPanel.stopAnimation();
-                    windOverlayPanel.setWind(lastWindSpeed, lastWindDeg);
-                    windOverlayPanel.startAnimation();
-                }
-            } else {
-                updateWindDirectionLabel(0, 0);
-            }
-
-            // Precipitación: opción eliminada
-        });
-    }
+    // updateWeatherSnapshot moved to presenter.onWeatherSnapshotUpdated
     
     private void updateWindDirectionLabel(double deg, double speedMs) {
         String[] directions = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
@@ -744,19 +535,17 @@ public class WeatherMapWindow extends JFrame {
         if (h) { layersComponents.temperatureButton.setSelected(false); }
         if (t) { layersComponents.humidityButton.setSelected(false); }
 
-        // Apply visibility
-        humidityOverlayPanel.setActive(h);
-        temperatureOverlayPanel.setActive(t);
-
-        // Legend
-        if (h) { legendPanel.setMode(LegendPanel.Mode.HUMIDITY); legendPanel.setVisible(true); }
-        else if (t) { legendPanel.setMode(LegendPanel.Mode.TEMPERATURE); legendPanel.setVisible(true); }
-        else { legendPanel.setVisible(false); }
+        // Delegate to presenter/manager
+        presenter.updateOverlayMode(h, t, legendPanel);
     }
     
     private void onTimeSliderChanged() {
         if (weatherDataManager.hasWeatherData()) {
-            weatherDataManager.updateWeatherAtIndex(timeSelectorComponents.slider.getValue());
+            int idx = timeSelectorComponents.slider.getValue();
+            // Actualizar snapshot de la estación activa
+            weatherDataManager.updateWeatherAtIndex(idx);
+            // Ajustar overlay de viento de TODAS las estaciones al periodo seleccionado
+            weatherDataManager.updateWindDataAtIndexForStations(idx, windOverlayPanel);
         }
     }
     

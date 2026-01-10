@@ -82,10 +82,10 @@ public class UIComponentFactory {
         JToggleButton windButton = new JToggleButton("Viento");
         JToggleButton humidityButton = new JToggleButton("Humedad");
         JToggleButton temperatureButton = new JToggleButton("Temperatura");
-
-        // Activar por defecto las capas principales para una experiencia coherente
-        windButton.setSelected(true);
-        humidityButton.setSelected(true);
+        // Por defecto, ninguna capa seleccionada al inicio
+        windButton.setSelected(false);
+        humidityButton.setSelected(false);
+        temperatureButton.setSelected(false);
 
         windButton.addActionListener(e -> {
             if (onWindToggle != null) {
@@ -205,10 +205,10 @@ public class UIComponentFactory {
         JPanel timeButtonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
         timeButtonsPanel.setOpaque(false);
         
-        JButton prevButton = new JButton("◄");
+        JButton prevButton = new JButton("Anterior");
         prevButton.setPreferredSize(new Dimension(40, 25));
         
-        JButton nextButton = new JButton("►");
+        JButton nextButton = new JButton("Siguiente");
         nextButton.setPreferredSize(new Dimension(40, 25));
         
         JButton latestButton = new JButton("Actual");

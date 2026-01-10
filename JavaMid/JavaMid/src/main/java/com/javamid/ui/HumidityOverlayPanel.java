@@ -13,13 +13,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
+import com.javamid.ui.overlay.WeatherOverlay;
 
 /**
  * Panel transparente que renderiza overlay de humedad.
  * Muestra círculos azules transparentes en el radio de influencia de cada estación
  * con intensidad proporcional al nivel de humedad.
  */
-public class HumidityOverlayPanel extends JPanel {
+public class HumidityOverlayPanel extends JPanel implements WeatherOverlay {
     
     private static final Logger LOGGER = Logger.getLogger(HumidityOverlayPanel.class.getName());
     
@@ -89,6 +90,10 @@ public class HumidityOverlayPanel extends JPanel {
             }
             return;
         }
+        // Hide overlay when zoomed out beyond threshold
+        if (mapViewer.getZoom() < MapConfig.MIN_OVERLAY_ZOOM) {
+            return;
+        }
         
         Graphics2D g2d = (Graphics2D) g.create();
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -99,7 +104,12 @@ public class HumidityOverlayPanel extends JPanel {
             // Si hay panel de marcadores, limitar a estaciones visibles no agrupadas
             List<WeatherStation> drawStations;
             if (stationMarkerPanel != null) {
-                drawStations = stationMarkerPanel.getVisibleUnclusteredStations();
+                List<WeatherStation> filtered = stationMarkerPanel.getVisibleUnclusteredStations();
+                if (filtered == null || filtered.isEmpty()) {
+                    // No unclustered visible stations → hide overlay by skipping paint
+                    return;
+                }
+                drawStations = filtered;
             } else {
                 drawStations = stations;
             }

@@ -11,7 +11,7 @@ import java.util.List;
  */
 public class StationParticlePool {
     private final String stationId;
-    private final int maxParticles;
+    private int maxParticles;
     private final List<WindParticle> pool;
     private int activeCount = 0;
     private int totalAcquired = 0;
@@ -71,6 +71,16 @@ public class StationParticlePool {
 
     public int getMaxParticles() {
         return maxParticles;
+    }
+
+    /**
+     * Actualiza el máximo de partículas permitido para esta estación.
+     * Si el nuevo máximo es menor que el número activo, las partículas
+     * se irán liberando progresivamente en los siguientes frames.
+     */
+    public void setMaxParticles(int newMax) {
+        if (newMax < 1) newMax = 1;
+        this.maxParticles = newMax;
     }
 
     public String getStationId() {

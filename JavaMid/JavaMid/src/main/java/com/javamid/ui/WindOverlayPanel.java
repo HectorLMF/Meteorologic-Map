@@ -3,6 +3,7 @@ package com.javamid.ui;
 import com.javamid.flyweight.ParticleStyle;
 import com.javamid.flyweight.WeatherFlyweightFactory;
 import com.javamid.model.WeatherStation;
+import com.javamid.config.MapConfig;
 import com.javamid.util.GeoUtils;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.GeoPosition;
@@ -428,6 +429,11 @@ public class WindOverlayPanel extends JPanel {
     
     public void setStationWind(String stationId, double speedMs, double directionDeg) {
         stationWindData.put(stationId, new WindData(speedMs, directionDeg));
+        // Ajustar el máximo de partículas de la estación según su velocidad
+        StationParticlePool pool = stationPools.get(stationId);
+        if (pool != null) {
+            pool.setMaxParticles(computeCapForSpeed(speedMs));
+        }
     }
     
     /**
@@ -455,6 +461,14 @@ public class WindOverlayPanel extends JPanel {
         
         LOGGER.fine(String.format("[WIND] Viento actualizado: %.2f m/s a %.1f°", 
             speedMetersPerSecond, deg));
+
+        // Actualizar pools de estaciones que usan viento global (sin datos específicos)
+        for (java.util.Map.Entry<String, StationParticlePool> e : stationPools.entrySet()) {
+            String stationId = e.getKey();
+            if (!stationWindData.containsKey(stationId)) {
+                e.getValue().setMaxParticles(computeCapForSpeed(speedMetersPerSecond));
+            }
+        }
     }
     
     public void setWindChangeListener(WindChangeListener listener) {
@@ -765,10 +779,14 @@ public class WindOverlayPanel extends JPanel {
         }
         
         // Distribución uniforme: Calcular partículas objetivo por estación
-        int targetParticlesTotal = Math.min(
-            maxParticlesPerStation * cachedVisibleStations.size(),
-            5000  // Límite absoluto para performance
-        );
+        // Calcular objetivo total sumando el cap por estación según su velocidad
+        int targetParticlesTotal = 0;
+        for (WeatherStation station : cachedVisibleStations) {
+            WindData wd = stationWindData.get(station.getId());
+            double s = (wd != null ? wd.speedMs : windSpeed);
+            targetParticlesTotal += computeCapForSpeed(s);
+        }
+        targetParticlesTotal = Math.min(targetParticlesTotal, 5000);
         
         // Agregar partículas distribuyendo equitativamente entre estaciones
         int currentTotal = particles.size();
@@ -820,7 +838,8 @@ public class WindOverlayPanel extends JPanel {
             
             // Obtener o crear pool para esta estación
             StationParticlePool pool = stationPools.computeIfAbsent(stationId, 
-                id -> new StationParticlePool(id, maxParticlesPerStation));
+                id -> new StationParticlePool(id, computeCapForSpeed(
+                        stationWindData.get(id) != null ? stationWindData.get(id).speedMs : windSpeed)));
             
             // Obtener datos de viento de la estación más cercana
             double direction = windDeg;
@@ -831,6 +850,9 @@ public class WindOverlayPanel extends JPanel {
                 direction = windData.directionDeg;
                 velocity = windData.speedMs;
             }
+
+            // Asegurar que el cap del pool está alineado con la velocidad actual
+            pool.setMaxParticles(computeCapForSpeed(velocity));
             
             ParticleStyle style = WeatherFlyweightFactory.getStyleForWind(velocity, direction);
             
@@ -981,6 +1003,18 @@ public class WindOverlayPanel extends JPanel {
         performanceMetrics.recordParticleAddition(particlesAddedThisFrame);
         performanceMetrics.recordParticleRemoval(particlesRemovedThisFrame);
         performanceMetrics.recordPeakParticleCount(particles.size());
+    }
+
+    /**
+     * Calcula el máximo de partículas por estación en función de la velocidad del viento.
+     * Escala linealmente entre MIN_PARTICLE_FRACTION y 1.0 usando el máximo definido.
+     */
+    private int computeCapForSpeed(double speedMs) {
+        double norm = speedMs / MapConfig.WIND_SPEED_MAX_FOR_FULL_PARTICLES;
+        norm = Math.max(MapConfig.MIN_PARTICLE_FRACTION, Math.min(1.0, norm));
+        int cap = (int) Math.round(maxParticlesPerStation * norm);
+        cap = Math.max(MapConfig.MIN_PARTICLES_PER_STATION, Math.min(MapConfig.MAX_PARTICLES_PER_STATION, cap));
+        return cap;
     }
 
     /**

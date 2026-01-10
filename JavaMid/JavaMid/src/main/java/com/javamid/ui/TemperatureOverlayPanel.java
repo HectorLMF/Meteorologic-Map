@@ -12,12 +12,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.javamid.ui.overlay.WeatherOverlay;
 
 /**
  * Panel transparente que renderiza overlay de temperatura.
  * Muestra círculos con escala cromática según temperatura en °C.
  */
-public class TemperatureOverlayPanel extends JPanel {
+public class TemperatureOverlayPanel extends JPanel implements WeatherOverlay {
 
     private final JXMapViewer mapViewer;
     private List<WeatherStation> stations = new ArrayList<>();
@@ -75,6 +76,10 @@ public class TemperatureOverlayPanel extends JPanel {
         if (!active || stations.isEmpty() || mapViewer == null) {
             return;
         }
+        // Hide overlay when zoomed out beyond threshold
+        if (mapViewer.getZoom() < MapConfig.MIN_OVERLAY_ZOOM) {
+            return;
+        }
 
         Graphics2D g2d = (Graphics2D) g.create();
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -84,9 +89,11 @@ public class TemperatureOverlayPanel extends JPanel {
             List<WeatherStation> drawStations = stations;
             if (stationMarkerPanel != null) {
                 List<WeatherStation> filtered = stationMarkerPanel.getVisibleUnclusteredStations();
-                if (filtered != null && !filtered.isEmpty()) {
-                    drawStations = filtered;
+                if (filtered == null || filtered.isEmpty()) {
+                    // No unclustered visible stations → hide overlay by skipping paint
+                    return;
                 }
+                drawStations = filtered;
             }
 
             for (WeatherStation station : drawStations) {

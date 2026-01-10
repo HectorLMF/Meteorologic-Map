@@ -11,6 +11,8 @@ import com.javamid.util.GeoUtils;
 import javax.swing.*;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -33,6 +35,8 @@ public class WeatherDataManager {
     private JsonNode currentWeatherData;
     private int currentTimeIndex = -1;
     private boolean fetchInProgress = false;
+    // Cache de datos horarios por estación para overlays (viento, etc.)
+    private final Map<String, JsonNode> stationHourlyCache = new ConcurrentHashMap<>();
     
     // Callbacks
     private Consumer<String> onWeatherTextUpdate;
@@ -100,10 +104,11 @@ public class WeatherDataManager {
                         if (hourly.has("time")) {
                             JsonNode timeArray = hourly.get("time");
                             int lastIndex = timeArray.size() - 1;
-                            currentTimeIndex = lastIndex;
-                            
-                            // Actualizar con el último índice
-                            updateWeatherAtIndex(lastIndex);
+                            // Mantener el índice seleccionado previamente si es válido; si no, usar el último
+                            int desiredIndex = (currentTimeIndex >= 0) ? Math.min(currentTimeIndex, lastIndex) : lastIndex;
+                            currentTimeIndex = desiredIndex;
+                            // Actualizar snapshot al índice elegido sin modificar la barra de tiempo
+                            updateWeatherAtIndex(desiredIndex);
                         }
                     }
                 } catch (Exception e) {
@@ -187,6 +192,8 @@ public class WeatherDataManager {
                     
                     if (response != null && response.has("hourly")) {
                         JsonNode hourly = response.get("hourly");
+                        // Cachear datos horarios por estación para poder actualizar según el índice temporal seleccionado
+                        stationHourlyCache.put(station.getId(), hourly);
                         if (hourly.has("time") && hourly.has("wind_speed_10m") && hourly.has("wind_direction_10m")) {
                             JsonNode timeArray = hourly.get("time");
                             int lastIndex = timeArray.size() - 1;
@@ -211,6 +218,38 @@ public class WeatherDataManager {
                 }
             });
         }
+    }
+
+    /**
+     * Actualiza los datos de viento de TODAS las estaciones cacheadas al índice temporal indicado.
+     * Se usa cuando el usuario mueve la barra de tiempo.
+     */
+    public void updateWindDataAtIndexForStations(int index, WindOverlayPanel windOverlay) {
+        if (windOverlay == null || stationHourlyCache.isEmpty()) {
+            return;
+        }
+        stationHourlyCache.forEach((stationId, hourly) -> {
+            try {
+                if (hourly != null && hourly.has("time") && hourly.has("wind_speed_10m") && hourly.has("wind_direction_10m")) {
+                    JsonNode timeArray = hourly.get("time");
+                    if (timeArray == null) return;
+                    int max = Math.max(0, timeArray.size() - 1);
+                    int clamped = Math.max(0, Math.min(index, max));
+                    JsonNode speedArray = hourly.get("wind_speed_10m");
+                    JsonNode dirArray = hourly.get("wind_direction_10m");
+                    if (speedArray != null && dirArray != null &&
+                        speedArray.size() > clamped && dirArray.size() > clamped &&
+                        !speedArray.get(clamped).isNull() && !dirArray.get(clamped).isNull()) {
+                        double speedKmh = speedArray.get(clamped).asDouble();
+                        double speedMs = GeoUtils.kmhToMs(speedKmh);
+                        double deg = dirArray.get(clamped).asDouble();
+                        windOverlay.setStationWind(stationId, speedMs, deg);
+                    }
+                }
+            } catch (Exception ex) {
+                LOGGER.log(Level.FINE, "Error updating wind for station " + stationId + " at index " + index, ex);
+            }
+        });
     }
     
     /**

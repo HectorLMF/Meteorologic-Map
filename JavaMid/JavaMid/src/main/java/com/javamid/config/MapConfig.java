@@ -67,6 +67,13 @@ public final class MapConfig {
     
     /** Zoom inicial del mapa */
     public static final int DEFAULT_MAP_ZOOM = 5;
+
+    /**
+     * Zoom mínimo para mostrar overlays de temperatura/humedad.
+     * A zooms más bajos (más alejados), las capas no se renderizan
+     * para evitar ruido visual cuando las estaciones están agrupadas.
+     */
+    public static final int MIN_OVERLAY_ZOOM = 4;
     
     /** Latitud inicial (Madrid, España) */
     public static final double DEFAULT_LATITUDE = 40.4168;
@@ -105,4 +112,16 @@ public final class MapConfig {
     
     /** Máximo número de partículas por estación */
     public static final int MAX_PARTICLES_PER_STATION = 5000;
+
+    /**
+     * Velocidad de viento (m/s) a la que se considera "viento fuerte"
+     * y se asigna el máximo de partículas por estación.
+     */
+    public static final double WIND_SPEED_MAX_FOR_FULL_PARTICLES = 15.0;
+
+    /**
+     * Fracción mínima de partículas por estación incluso con viento bajo.
+     * Evita que la animación desaparezca totalmente a velocidades pequeñas.
+     */
+    public static final double MIN_PARTICLE_FRACTION = 0.3; // 30% del máximo
 }
