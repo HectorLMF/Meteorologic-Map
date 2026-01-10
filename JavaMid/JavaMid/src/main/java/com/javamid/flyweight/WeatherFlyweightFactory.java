@@ -51,48 +51,34 @@ public class WeatherFlyweightFactory {
     }
 
     private static ParticleStyle createStyle(int speedBucket, int directionBucket) {
-        // Colores base por velocidad
-        Color baseColor;
-        float baseStroke;
+        // Todas las partículas tienen cuerpo blanco y borde negro
+        Color fillColor = Color.WHITE;
+        Color strokeColor = Color.BLACK;
+        float strokeWidth;
         
+        // Grosor del borde según velocidad
         switch (speedBucket) {
             case 0: 
-                baseColor = new Color(0x80,0xCC,0xFF);
-                baseStroke = 0.8f;
+                strokeWidth = 1.0f;
                 break;
             case 1: 
-                baseColor = new Color(0x66,0xB2,0xFF);
-                baseStroke = 1.2f;
+                strokeWidth = 1.3f;
                 break;
             case 2: 
-                baseColor = new Color(0x33,0x99,0xFF);
-                baseStroke = 1.6f;
+                strokeWidth = 1.7f;
                 break;
             case 3: 
-                baseColor = new Color(0x00,0x66,0xCC);
-                baseStroke = 2.2f;
+                strokeWidth = 2.2f;
                 break;
             case 4: 
-                baseColor = new Color(0x00,0x44,0x99);
-                baseStroke = 3.0f;
+                strokeWidth = 2.8f;
                 break;
             default: 
-                baseColor = new Color(0x00,0x22,0x66);
-                baseStroke = 4.0f;
+                strokeWidth = 3.5f;
                 break;
         }
         
-        // Variación sutil de color por dirección para mejor visualización
-        int r = baseColor.getRed();
-        int g = baseColor.getGreen();
-        int b = baseColor.getBlue();
-        
-        // Ajustar ligeramente el color según la dirección
-        int variation = directionBucket * 5;
-        r = Math.min(255, Math.max(0, r + variation));
-        g = Math.min(255, Math.max(0, g - variation / 2));
-        
-        return new ParticleStyle(new Color(r, g, b), baseStroke);
+        return new ParticleStyle(fillColor, strokeColor, strokeWidth);
     }
     
     /**

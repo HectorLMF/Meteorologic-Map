@@ -3,6 +3,7 @@ package com.javamid.ui;
 import com.javamid.flyweight.ParticleStyle;
 import com.javamid.flyweight.WeatherFlyweightFactory;
 import com.javamid.model.WeatherStation;
+import com.javamid.util.GeoUtils;
 import org.jxmapviewer.JXMapViewer;
 import org.jxmapviewer.viewer.GeoPosition;
 
@@ -102,6 +103,13 @@ public class WindOverlayPanel extends JPanel {
     // Stats para debug
     private long lastStatsTime = 0;
     private static final long STATS_INTERVAL_MS = 1000;
+    
+    // Wind change listener
+    private WindChangeListener windChangeListener = null;
+    
+    public interface WindChangeListener {
+        void onWindChanged(double speedMs, double directionDeg);
+    }
 
     public WindOverlayPanel(JXMapViewer mapViewer) {
         this.mapViewer = mapViewer;
@@ -175,7 +183,7 @@ public class WindOverlayPanel extends JPanel {
     }
 
     public void setParticleCount(int count) {
-        this.maxParticlesPerStation = Math.max(10, Math.min(500, count));
+        this.maxParticlesPerStation = Math.max(10, Math.min(5000, count));
         // No eliminamos partículas existentes, dejamos que el sistema se ajuste naturalmente
     }
     
@@ -245,13 +253,7 @@ public class WindOverlayPanel extends JPanel {
      * Calcula la distancia entre dos puntos geográficos usando la fórmula de Haversine.
      */
     private double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLon = Math.toRadians(lon2 - lon1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                   Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-                   Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return 6371 * c; // Radio de la Tierra en km
+        return GeoUtils.calculateDistanceKm(lat1, lon1, lat2, lon2);
     }
     
     public List<WeatherStation> getVisibleStations() {
@@ -446,8 +448,17 @@ public class WindOverlayPanel extends JPanel {
         this.windDeg = deg;
         velocityCache.clear();  // Limpiar caché cuando cambia viento
         
+        // Notificar a listeners
+        if (windChangeListener != null) {
+            windChangeListener.onWindChanged(speedMetersPerSecond, deg);
+        }
+        
         LOGGER.fine(String.format("[WIND] Viento actualizado: %.2f m/s a %.1f°", 
             speedMetersPerSecond, deg));
+    }
+    
+    public void setWindChangeListener(WindChangeListener listener) {
+        this.windChangeListener = listener;
     }
 
     private void populateInitialParticles() {
@@ -756,7 +767,7 @@ public class WindOverlayPanel extends JPanel {
         // Distribución uniforme: Calcular partículas objetivo por estación
         int targetParticlesTotal = Math.min(
             maxParticlesPerStation * cachedVisibleStations.size(),
-            500  // Límite absoluto para performance
+            5000  // Límite absoluto para performance
         );
         
         // Agregar partículas distribuyendo equitativamente entre estaciones
@@ -843,39 +854,45 @@ public class WindOverlayPanel extends JPanel {
         for (WindParticle p : particles) {
             Point2D.Double pos = p.getPos();
             
-            // Nueva lógica: Siempre actualizar la dirección basándose en la estación más cercana
+            // Obtener datos de viento: estación específica o global fallback
+            double targetDeg = windDeg;  // Default al viento global
+            double targetSpeed = windSpeed;
+            
+            // Intentar usar viento de la estación más cercana si está disponible
             WeatherStation closestStation = getClosestStation(pos.x, pos.y);
             if (closestStation != null) {
                 WindData windData = stationWindData.get(closestStation.getId());
                 if (windData != null) {
-                    // Obtener la dirección actual de la partícula
-                    double currentVx = p.getVx();
-                    double currentVy = p.getVy();
-                    double currentSpeed = Math.sqrt(currentVx * currentVx + currentVy * currentVy);
-                    
-                    // Calcular la nueva dirección basada en la estación más cercana
-                    double speed = w * (speedScale / 100.0);
-                    double[] baseVel = velocityCache.getVelocity(windData.directionDeg, speed);
-                    double targetVx = baseVel[0];
-                    double targetVy = baseVel[1];
-                    
-                    // Interpolar suavemente hacia la nueva dirección (transición suave)
-                    double interpolationFactor = 0.1; // 10% de cambio por frame (ajustar para más/menos suavidad)
-                    double newVx = currentVx + (targetVx - currentVx) * interpolationFactor;
-                    double newVy = currentVy + (targetVy - currentVy) * interpolationFactor;
-                    
-                    // Añadir variación aleatoria pequeña
-                    newVx += (rnd.nextDouble() - 0.5) * 1.0;
-                    newVy += (rnd.nextDouble() - 0.5) * 1.0;
-                    
-                    p.setVelocity(newVx, newVy);
-                    
+                    targetDeg = windData.directionDeg;
+                    targetSpeed = windData.speedMs;
                     // Actualizar el stationId si cambió la estación más cercana
                     if (!closestStation.getId().equals(p.getStationId())) {
                         p.setStationId(closestStation.getId());
                     }
                 }
             }
+            
+            // Obtener la dirección actual de la partícula
+            double currentVx = p.getVx();
+            double currentVy = p.getVy();
+            double currentSpeed = Math.sqrt(currentVx * currentVx + currentVy * currentVy);
+            
+            // Calcular la nueva dirección
+            double speed = w * (speedScale / 100.0);
+            double[] baseVel = velocityCache.getVelocity(targetDeg, speed);
+            double targetVx = baseVel[0];
+            double targetVy = baseVel[1];
+            
+            // Interpolar suavemente hacia la nueva dirección (transición suave)
+            double interpolationFactor = 0.1; // 10% de cambio por frame (ajustar para más/menos suavidad)
+            double newVx = currentVx + (targetVx - currentVx) * interpolationFactor;
+            double newVy = currentVy + (targetVy - currentVy) * interpolationFactor;
+            
+            // Añadir variación aleatoria pequeña
+            newVx += (rnd.nextDouble() - 0.5) * 1.0;
+            newVy += (rnd.nextDouble() - 0.5) * 1.0;
+            
+            p.setVelocity(newVx, newVy);
             
             // Actualizar posición
             p.update(deltaSeconds);
@@ -1031,13 +1048,6 @@ public class WindOverlayPanel extends JPanel {
             
             if (s == null) continue;
             
-            targetGraphics.setColor(s.getColor());
-            
-            // Reutilizar stroke del caché
-            int strokeIndex = Math.min((int)(s.getStrokeWidth() * 1.5f * sizeScale), strokeCache.length - 1);
-            BasicStroke stroke = strokeCache[strokeIndex];
-            targetGraphics.setStroke(stroke);
-            
             double vx = p.getVx();
             double vy = p.getVy();
             double speed = Math.sqrt(vx * vx + vy * vy);
@@ -1048,10 +1058,27 @@ public class WindOverlayPanel extends JPanel {
                 double dx = (vx / speed) * len;
                 double dy = (vy / speed) * len;
                 
+                // Primero dibujar el cuerpo blanco (más grueso)
+                int strokeIndex = Math.min((int)(s.getStrokeWidth() * 1.8f * sizeScale), strokeCache.length - 1);
+                BasicStroke fillStroke = strokeCache[strokeIndex];
+                targetGraphics.setStroke(fillStroke);
+                targetGraphics.setColor(s.getFillColor());
+                targetGraphics.drawLine((int)pos.x, (int)pos.y, (int)(pos.x + dx), (int)(pos.y + dy));
+                
+                // Luego dibujar el borde negro (más delgado)
+                int borderStrokeIndex = Math.min((int)(s.getStrokeWidth() * 0.6f * sizeScale), strokeCache.length - 1);
+                BasicStroke borderStroke = strokeCache[Math.max(0, borderStrokeIndex)];
+                targetGraphics.setStroke(borderStroke);
+                targetGraphics.setColor(s.getStrokeColor());
                 targetGraphics.drawLine((int)pos.x, (int)pos.y, (int)(pos.x + dx), (int)(pos.y + dy));
             } else {
                 int dotSize = (int)(4 * sizeScale);
+                // Dibujar círculo blanco con borde negro
+                targetGraphics.setColor(s.getFillColor());
                 targetGraphics.fillOval((int)(pos.x - dotSize/2), (int)(pos.y - dotSize/2), dotSize, dotSize);
+                targetGraphics.setColor(s.getStrokeColor());
+                targetGraphics.setStroke(new BasicStroke(1.0f));
+                targetGraphics.drawOval((int)(pos.x - dotSize/2), (int)(pos.y - dotSize/2), dotSize, dotSize);
             }
             renderedCount++;
         }

@@ -10,6 +10,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
@@ -36,26 +38,19 @@ public class StationMarkerPanel extends JPanel {
      */
     private static class StationCluster {
         List<WeatherStation> stations = new ArrayList<>();
-        Point2D.Double centerScreen;
-        
+
         StationCluster(WeatherStation first, Point2D.Double screenPos) {
             stations.add(first);
-            centerScreen = screenPos;
         }
-        
+
         void addStation(WeatherStation station, Point2D.Double screenPos) {
             stations.add(station);
-            // Recalcular centro promedio
-            double sumX = centerScreen.x * (stations.size() - 1) + screenPos.x;
-            double sumY = centerScreen.y * (stations.size() - 1) + screenPos.y;
-            centerScreen.x = sumX / stations.size();
-            centerScreen.y = sumY / stations.size();
         }
-        
+
         int getCount() {
             return stations.size();
         }
-        
+
         boolean contains(WeatherStation station) {
             return stations.contains(station);
         }
@@ -63,6 +58,7 @@ public class StationMarkerPanel extends JPanel {
     
     private final JXMapViewer mapViewer;
     private List<WeatherStation> allStations = new ArrayList<>();
+    private List<WeatherStation> visibleStations = new ArrayList<>();
     private WeatherStation activeStation;
     private Consumer<WeatherStation> onStationSelected;
     private double influenceRadiusKm = 5.0; // Radio de influencia en kilómetros
@@ -106,6 +102,23 @@ public class StationMarkerPanel extends JPanel {
         });
         
         addMouseWheelListener(e -> redispatchMouseWheelEvent(e));
+
+        // Recalcular visibilidad y clusters cuando cambie el mapa (pan/zoom) o el tamaño del panel
+        mapViewer.addPropertyChangeListener(evt -> {
+            String name = evt.getPropertyName();
+            if ("zoom".equals(name) || "center".equals(name) || "centerPosition".equals(name) || "addressLocation".equals(name)) {
+                clustersDirty = true;
+                repaint();
+            }
+        });
+
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                clustersDirty = true;
+                repaint();
+            }
+        });
     }
     
     /**
@@ -113,7 +126,8 @@ public class StationMarkerPanel extends JPanel {
      */
     public void setStations(List<WeatherStation> stations) {
         this.allStations = stations != null ? new ArrayList<>(stations) : new ArrayList<>();
-        clustersDirty = true; // Invalidar caché de clustering
+        clustersDirty = true; // Invalidar caché de clustering y visibilidad
+        updateVisibleStations();
         
         System.out.println("[STATIONS] Setting " + allStations.size() + " stations");
         
@@ -169,6 +183,7 @@ public class StationMarkerPanel extends JPanel {
      */
     public void clearStations() {
         this.allStations.clear();
+        this.visibleStations.clear();
         this.activeStation = null;
         repaint();
     }
@@ -227,22 +242,24 @@ public class StationMarkerPanel extends JPanel {
         List<StationCluster> clusters = new ArrayList<>();
         List<WeatherStation> processed = new ArrayList<>();
         
-        for (WeatherStation station : allStations) {
+        for (WeatherStation station : visibleStations) {
             if (processed.contains(station)) continue;
             
             Point2D screenPos = getScreenPosition(station);
             if (screenPos == null) continue;
+            if (!isOnScreen(screenPos, 0)) continue;
             
             // Crear nuevo cluster con esta estación
             StationCluster cluster = new StationCluster(station, new Point2D.Double(screenPos.getX(), screenPos.getY()));
             processed.add(station);
             
             // Buscar otras estaciones cercanas para agregar al cluster
-            for (WeatherStation other : allStations) {
+            for (WeatherStation other : visibleStations) {
                 if (processed.contains(other)) continue;
                 
                 Point2D otherPos = getScreenPosition(other);
                 if (otherPos == null) continue;
+                if (!isOnScreen(otherPos, 0)) continue;
                 
                 double dx = screenPos.getX() - otherPos.getX();
                 double dy = screenPos.getY() - otherPos.getY();
@@ -259,13 +276,43 @@ public class StationMarkerPanel extends JPanel {
         
         return clusters;
     }
+
+    /**
+     * Asegura que la caché de clusters esté actualizada para el zoom/viewport actual.
+     */
+    private void ensureClustersComputed() {
+        int currentZoom = mapViewer.getZoom();
+        if (currentZoom != lastZoom) {
+            clustersDirty = true;
+            lastZoom = currentZoom;
+        }
+        if (clustersDirty) {
+            updateVisibleStations();
+            cachedClusters = createClusters();
+            clustersDirty = false;
+        }
+    }
+
+    /**
+     * Devuelve las estaciones visibles que no están agrupadas (clusters de tamaño 1).
+     */
+    public List<WeatherStation> getVisibleUnclusteredStations() {
+        ensureClustersComputed();
+        List<WeatherStation> result = new ArrayList<>();
+        for (StationCluster c : cachedClusters) {
+            if (c.getCount() == 1 && !c.stations.isEmpty()) {
+                result.add(c.stations.get(0));
+            }
+        }
+        return result;
+    }
     
     /**
      * Maneja el clic en una estación
      * @return true si se clickeó en una estación, false si no
      */
     private boolean handleStationClick(int mouseX, int mouseY) {
-        if (allStations.isEmpty()) {
+        if (visibleStations.isEmpty()) {
             return false;
         }
         
@@ -273,7 +320,7 @@ public class StationMarkerPanel extends JPanel {
         WeatherStation clickedStation = null;
         double minDistance = 25.0; // Radio de detección en píxeles (aumentado por iconos más grandes)
         
-        for (WeatherStation station : allStations) {
+        for (WeatherStation station : visibleStations) {
             Point2D screenPos = getScreenPosition(station);
             if (screenPos == null) continue;
             
@@ -370,6 +417,38 @@ public class StationMarkerPanel extends JPanel {
             return null;
         }
     }
+
+    /**
+     * Indica si una posición está dentro del panel visible (con margen opcional)
+     */
+    private boolean isOnScreen(Point2D pos, int marginPx) {
+        int w = getWidth();
+        int h = getHeight();
+        double x = pos.getX();
+        double y = pos.getY();
+        return x >= -marginPx && x <= (w + marginPx) && y >= -marginPx && y <= (h + marginPx);
+    }
+
+    /**
+     * Actualiza la lista de estaciones visibles según el viewport actual
+     */
+    private void updateVisibleStations() {
+        visibleStations.clear();
+        if (allStations.isEmpty()) return;
+        for (WeatherStation s : allStations) {
+            Point2D p = getScreenPosition(s);
+            if (p != null && isOnScreen(p, 0)) {
+                visibleStations.add(s);
+            }
+        }
+        // Si la estación activa ya no es visible, deseleccionarla
+        if (activeStation != null) {
+            Point2D ap = getScreenPosition(activeStation);
+            if (ap == null || !isOnScreen(ap, 0)) {
+                setActiveStation(null);
+            }
+        }
+    }
     
     /**
      * Convierte kilómetros a píxeles en pantalla según el zoom actual
@@ -423,6 +502,7 @@ public class StationMarkerPanel extends JPanel {
         
         // Recalcular clusters solo si es necesario
         if (clustersDirty) {
+            updateVisibleStations();
             cachedClusters = createClusters();
             clustersDirty = false;
         }
@@ -462,21 +542,35 @@ public class StationMarkerPanel extends JPanel {
         // Ahora dibujar marcadores (clusters o estaciones individuales)
         for (StationCluster cluster : cachedClusters) {
             if (cluster.getCount() > 1) {
-                // Dibujar marcador de cluster (cuadrado)
-                int x = (int) cluster.centerScreen.x;
-                int y = (int) cluster.centerScreen.y;
+                // Calcular centro del cluster en cada repintado (sigue el drag/pan)
+                double sumX = 0.0;
+                double sumY = 0.0;
+                int validCount = 0;
+                for (WeatherStation s : cluster.stations) {
+                    Point2D pos = getScreenPosition(s);
+                    if (pos != null) {
+                        sumX += pos.getX();
+                        sumY += pos.getY();
+                        validCount++;
+                    }
+                }
+                if (validCount == 0) {
+                    continue;
+                }
+                int x = (int) Math.round(sumX / validCount);
+                int y = (int) Math.round(sumY / validCount);
                 int size = 40;
-                
+
                 // Cuadrado con relleno azul semi-transparente
                 g2.setColor(new Color(50, 100, 200, 150));
                 Rectangle2D clusterRect = new Rectangle2D.Double(x - size/2, y - size/2, size, size);
                 g2.fill(clusterRect);
-                
+
                 // Borde negro
                 g2.setColor(Color.BLACK);
                 g2.setStroke(new BasicStroke(2.0f));
                 g2.draw(clusterRect);
-                
+
                 // Número de estaciones en el cluster
                 g2.setColor(Color.WHITE);
                 g2.setFont(new Font("Arial", Font.BOLD, 14));
@@ -485,7 +579,7 @@ public class StationMarkerPanel extends JPanel {
                 int textWidth = fm.stringWidth(count);
                 int textHeight = fm.getAscent();
                 g2.drawString(count, x - textWidth/2, y + textHeight/2 - 2);
-                
+
             } else {
                 // Dibujar estación individual (círculo)
                 WeatherStation station = cluster.stations.get(0);

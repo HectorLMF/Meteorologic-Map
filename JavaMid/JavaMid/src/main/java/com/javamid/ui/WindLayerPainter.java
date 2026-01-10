@@ -123,8 +123,6 @@ public class WindLayerPainter implements Painter<JXMapViewer> {
             for (WindParticle p : particles) {
                 Point2D.Double pos = p.getPos();
                 ParticleStyle s = p.getStyle();
-                g2.setColor(s.getColor());
-                g2.setStroke(new BasicStroke(s.getStrokeWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                 
                 // Draw short line indicating wind direction based on velocity
                 double vx = p.getVx();
@@ -138,10 +136,29 @@ public class WindLayerPainter implements Painter<JXMapViewer> {
                     double dy = (vy / speed) * len;
                     
                     Line2D line = new Line2D.Double(pos.x, pos.y, pos.x + dx, pos.y + dy);
+                    
+                    // Draw white fill (thicker)
+                    g2.setColor(s.getFillColor());
+                    g2.setStroke(new BasicStroke(s.getStrokeWidth() + 2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g2.draw(line);
+                    
+                    // Draw black border (thinner)
+                    g2.setColor(s.getStrokeColor());
+                    g2.setStroke(new BasicStroke(s.getStrokeWidth(), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                     g2.draw(line);
                 } else {
-                    // Draw a small dot if speed is very low
-                    g2.fillOval((int)(pos.x - 1), (int)(pos.y - 1), 3, 3);
+                    // Draw a small dot if speed is very low - white fill with black border
+                    int dotSize = 3;
+                    int x = (int)(pos.x - dotSize/2);
+                    int y = (int)(pos.y - dotSize/2);
+                    
+                    // Draw white fill
+                    g2.setColor(s.getFillColor());
+                    g2.fillOval(x, y, dotSize, dotSize);
+                    
+                    // Draw black border
+                    g2.setColor(s.getStrokeColor());
+                    g2.drawOval(x, y, dotSize, dotSize);
                 }
             }
         }
