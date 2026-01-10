@@ -1,6 +1,11 @@
 name: Release
 
 on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - '**'
   workflow_dispatch:
     inputs:
       tag:
@@ -49,12 +54,21 @@ jobs:
       - name: Determine tag
         id: determine_tag
         run: |
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            IS_PRERELEASE=false
+          elif [ -n "${{ github.event.inputs.tag }}" ]; then
             TAG="${{ github.event.inputs.tag }}"
+            IS_PRERELEASE=${{ github.event.inputs.prerelease || 'false' }}
           else
-            TAG="v${{ steps.get_version.outputs.version }}"
+            BRANCH="${GITHUB_REF#refs/heads/}"
+            BRANCH_SANITIZED=$(echo "$BRANCH" | sed 's#[^A-Za-z0-9._-]#-#g')
+            SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+            TAG="v${{ steps.get_version.outputs.version }}-${BRANCH_SANITIZED}-${SHORT_SHA}"
+            IS_PRERELEASE=true
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
 
       - name: List artifacts
         run: ls -la target || true
@@ -66,8 +80,9 @@ jobs:
           name: Release ${{ steps.determine_tag.outputs.tag }}
           body: ${{ github.event.inputs.notes }}
           draft: false
-          prerelease: ${{ github.event.inputs.prerelease }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.prerelease || steps.determine_tag.outputs.is_prerelease }}
           generate_release_notes: true
+          target_commitish: ${{ github.sha }}
           files: |
             JavaMid/JavaMid/target/*.jar
         env:
