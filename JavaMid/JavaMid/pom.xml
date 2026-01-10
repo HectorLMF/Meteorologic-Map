@@ -28,13 +28,6 @@
       <version>2.15.2</version>
     </dependency>
 
-    <!-- Spring Web for controller annotations used in the project -->
-    <dependency>
-      <groupId>org.springframework</groupId>
-      <artifactId>spring-web</artifactId>
-      <version>5.3.27</version>
-    </dependency>
-
     <!-- Spring Boot Starter Web para controladores REST -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -78,13 +71,23 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
         <version>2.7.18</version>
+        <configuration>
+          <mainClass>com.javamid.JavaMidApplication</mainClass>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
         <version>3.1.0</version>
         <configuration>
-          <mainClass>com.javamid.ui.WeatherMapWindow</mainClass>
+          <mainClass>com.javamid.JavaMidApplication</mainClass>
         </configuration>
       </plugin>
       <plugin>
