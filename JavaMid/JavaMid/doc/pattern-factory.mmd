@@ -1,0 +1,21 @@
+---
+id: pattern-factory
+title: Factory Pattern (Client & Provider)
+---
+classDiagram
+class WeatherClient
+class WeatherClientFactory {
+  +createClient(): WeatherClient
+}
+class OpenMeteoAdapter
+WeatherClientFactory ..> OpenMeteoAdapter : creates
+WeatherClientFactory --> WeatherClient : returns
+
+class WeatherProvider
+<<interface>> WeatherProvider
+class ProviderFactory {
+  +createProvider(): WeatherProvider
+}
+class OpenMeteoProvider
+ProviderFactory ..> OpenMeteoProvider : creates
+ProviderFactory --> WeatherProvider : returns

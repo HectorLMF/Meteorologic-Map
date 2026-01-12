@@ -45,6 +45,14 @@ jobs:
       - name: Build (skip tests)
         run: mvn -B -DskipTests package
 
+      - name: Verify executable JAR manifest
+        run: |
+          JAR=$(ls target/*.jar | head -n1)
+          echo "Using JAR: $JAR"
+          unzip -p "$JAR" META-INF/MANIFEST.MF | tee manifest.txt
+          grep -E 'Main-Class|Start-Class|Spring-Boot-Classes' manifest.txt
+          echo "Manifest verified."
+
       - name: Get version from pom.xml
         id: get_version
         run: |
@@ -73,6 +81,14 @@ jobs:
       - name: List artifacts
         run: ls -la target || true
 
+      - name: Prepare release artifact
+        id: prep_artifact
+        run: |
+          SRC_JAR=$(ls target/*.jar | head -n1)
+          DEST_JAR="target/JavaMid-${{ steps.determine_tag.outputs.tag }}.jar"
+          cp "$SRC_JAR" "$DEST_JAR"
+          echo "artifact=$DEST_JAR" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -84,6 +100,6 @@ jobs:
           generate_release_notes: true
           target_commitish: ${{ github.sha }}
           files: |
-            JavaMid/JavaMid/target/*.jar
+            JavaMid/JavaMid/${{ steps.prep_artifact.outputs.artifact }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

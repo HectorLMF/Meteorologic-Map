@@ -1,0 +1,18 @@
+---
+id: pattern-flyweight
+title: Flyweight Pattern (Marker & Particle Styles)
+---
+classDiagram
+class MarkerStyle
+class MarkerStyleFactory {
+  -cache: Map
+  +getStyle(key): MarkerStyle
+}
+MarkerStyleFactory o--> MarkerStyle : shares
+
+class ParticleStyle
+class WeatherFlyweightFactory {
+  -cache: Map
+  +getParticleStyle(key): ParticleStyle
+}
+WeatherFlyweightFactory o--> ParticleStyle : shares

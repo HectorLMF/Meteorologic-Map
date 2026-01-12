@@ -1,0 +1,12 @@
+---
+id: pattern-decorator
+title: Decorator Pattern (CachingWeatherClient)
+---
+classDiagram
+class WeatherClient
+<<interface>> WeatherClient
+class CachingWeatherClient {
+  -delegate: WeatherClient
+}
+WeatherClient <|.. CachingWeatherClient : implements
+CachingWeatherClient o--> WeatherClient : wraps

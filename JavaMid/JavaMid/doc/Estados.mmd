@@ -1,0 +1,58 @@
+---
+title: JavaMid - Diagrama de Estados
+---
+stateDiagram-v2
+    direction TB
+
+    [*] --> Inicializacion
+
+    state Inicializacion {
+        [*] --> DetectarEntorno
+        DetectarEntorno --> ModoGUI : GUI disponible
+        DetectarEntorno --> ModoServidor : Headless o --server
+    }
+
+    ModoServidor --> [*] : Spring Boot activo
+
+    state ModoGUI {
+        [*] --> CreandoVentana
+        CreandoVentana --> MapaListo
+        
+        state MapaListo {
+            [*] --> Idle
+            
+            Idle --> CargandoEstaciones : Usuario mueve mapa
+            CargandoEstaciones --> Idle : Estaciones cargadas
+            
+            Idle --> SeleccionEstacion : Click en estación
+            SeleccionEstacion --> CargandoDatos : Estación seleccionada
+            CargandoDatos --> MostrandoDatos : Datos recibidos
+            MostrandoDatos --> Idle : Datos mostrados
+            
+            state GestionOverlays {
+                [*] --> SinOverlay
+                SinOverlay --> OverlayViento : Activar viento
+                SinOverlay --> OverlayHumedad : Activar humedad
+                SinOverlay --> OverlayTemperatura : Activar temperatura
+                
+                OverlayViento --> SinOverlay : Desactivar
+                OverlayHumedad --> SinOverlay : Desactivar
+                OverlayTemperatura --> SinOverlay : Desactivar
+                
+                OverlayViento --> OverlayHumedad : Cambiar overlay
+                OverlayViento --> OverlayTemperatura : Cambiar overlay
+                OverlayHumedad --> OverlayViento : Cambiar overlay
+                OverlayHumedad --> OverlayTemperatura : Cambiar overlay
+                OverlayTemperatura --> OverlayViento : Cambiar overlay
+                OverlayTemperatura --> OverlayHumedad : Cambiar overlay
+            }
+            
+            state AnimacionViento {
+                [*] --> Pausado
+                Pausado --> Animando : Timer tick
+                Animando --> Pausado : Frame renderizado
+            }
+        }
+    }
+
+    ModoGUI --> [*] : Cerrar ventana

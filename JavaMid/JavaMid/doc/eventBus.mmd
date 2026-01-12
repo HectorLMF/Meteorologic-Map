@@ -1,0 +1,59 @@
+---
+title: Patrón Observer - EventBus
+---
+classDiagram
+    direction TB
+
+    class EventBus {
+        -PropertyChangeSupport support
+        +subscribe(eventName, listener)
+        +unsubscribe(eventName, listener)
+        +publish(eventName, payload)
+    }
+
+    class PropertyChangeSupport {
+        +addPropertyChangeListener()
+        +removePropertyChangeListener()
+        +firePropertyChange()
+    }
+
+    class PropertyChangeListener {
+        <<interface>>
+        +propertyChange(event)
+    }
+
+    class WeatherMapWindow {
+        -EventBus eventBus
+        +onStationSelected()
+        +onMapMoved()
+        +onOverlayChanged()
+    }
+
+    class WeatherMapPresenter {
+        +handleStationEvent()
+        +handleDataLoaded()
+    }
+
+    class WindOverlayPanel {
+        +handleWindDataUpdate()
+    }
+
+    class StationMarkerPanel {
+        +handleStationChange()
+    }
+
+    %% Relaciones del patrón
+    EventBus *-- PropertyChangeSupport : usa
+    PropertyChangeSupport --> PropertyChangeListener : notifica
+
+    WeatherMapWindow *-- EventBus : publisher
+    WeatherMapPresenter ..|> PropertyChangeListener : subscriber
+    WindOverlayPanel ..|> PropertyChangeListener : subscriber
+    StationMarkerPanel ..|> PropertyChangeListener : subscriber
+
+    EventBus <.. WeatherMapPresenter : subscribe
+    EventBus <.. WindOverlayPanel : subscribe
+    EventBus <.. StationMarkerPanel : subscribe
+
+    note for EventBus "Subject/Publisher\nNotifica cambios a\ntodos los suscriptores"
+    note for PropertyChangeListener "Observer\nRecibe notificaciones\nde eventos"

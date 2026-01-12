@@ -1,0 +1,73 @@
+---
+title: JavaMid - Diagrama de Secuencia (Interacción)
+---
+sequenceDiagram
+    autonumber
+    
+    actor Usuario
+    participant Window as WeatherMapWindow
+    participant Presenter as WeatherMapPresenter
+    participant StationMgr as StationManager
+    participant DataMgr as WeatherDataManager
+    participant Client as OpenMeteoClient
+    participant OverlayMgr as OverlayManager
+    participant WindPanel as WindOverlayPanel
+    
+    %% Inicio de la aplicación
+    rect rgb(220, 240, 255)
+        Note over Usuario,WindPanel: Inicio de la Aplicación
+        Usuario->>Window: Ejecutar aplicación
+        Window->>StationMgr: new StationManager()
+        Window->>DataMgr: new WeatherDataManager()
+        Window->>OverlayMgr: new OverlayManager()
+        Window->>Presenter: new WeatherMapPresenter()
+        Window-->>Usuario: Ventana visible
+    end
+    
+    %% Usuario mueve el mapa
+    rect rgb(255, 245, 220)
+        Note over Usuario,WindPanel: Usuario Navega el Mapa
+        Usuario->>Window: Mover/Zoom mapa
+        Window->>StationMgr: generarEstaciones(centro, radio)
+        StationMgr->>Client: generateNearbyPoints()
+        Client-->>StationMgr: Lista de estaciones virtuales
+        StationMgr-->>Window: Estaciones generadas
+        Window->>WindPanel: setStations(estaciones)
+    end
+    
+    %% Selección de estación
+    rect rgb(220, 255, 220)
+        Note over Usuario,WindPanel: Selección de Estación
+        Usuario->>Window: Click en estación
+        Window->>Presenter: onStationSelected(estacion)
+        Presenter->>DataMgr: cargarDatosMeteo(estacion)
+        DataMgr->>Client: getHistoricalWeather(lat, lon)
+        Client-->>DataMgr: JSON con datos
+        DataMgr-->>Presenter: Datos parseados
+        Presenter->>WindPanel: setWindData(velocidad, direccion)
+        Presenter-->>Window: Actualizar UI
+        Window-->>Usuario: Mostrar datos meteorológicos
+    end
+    
+    %% Cambio de overlay
+    rect rgb(255, 220, 255)
+        Note over Usuario,WindPanel: Cambio de Overlay
+        Usuario->>Window: Seleccionar overlay (Humedad)
+        Window->>Presenter: setOverlayMode(HUMIDITY)
+        Presenter->>OverlayMgr: setActiveMode(HUMIDITY)
+        OverlayMgr->>WindPanel: setActive(false)
+        OverlayMgr->>OverlayMgr: HumidityPanel.setActive(true)
+        Presenter->>DataMgr: cargarDatosHumedad()
+        DataMgr-->>Presenter: Datos de humedad
+        Presenter-->>Window: Repintar overlay
+        Window-->>Usuario: Overlay de humedad visible
+    end
+    
+    %% Animación de viento (loop interno)
+    rect rgb(240, 240, 240)
+        Note over WindPanel: Loop de Animación (30 FPS)
+        loop Cada 33ms
+            WindPanel->>WindPanel: updateParticles()
+            WindPanel->>WindPanel: repaint()
+        end
+    end

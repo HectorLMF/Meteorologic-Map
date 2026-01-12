@@ -1,0 +1,11 @@
+---
+id: pattern-overlay
+title: Overlay Pattern (WeatherOverlay Panels)
+---
+classDiagram
+class WeatherOverlay
+<<interface>> WeatherOverlay
+class HumidityOverlayPanel
+class TemperatureOverlayPanel
+WeatherOverlay <|.. HumidityOverlayPanel : implements
+WeatherOverlay <|.. TemperatureOverlayPanel : implements

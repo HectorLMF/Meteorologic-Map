@@ -1,0 +1,16 @@
+---
+id: pattern-presenter
+title: MVP Pattern (Presenter-View-Model)
+---
+classDiagram
+class WeatherMapWindow
+<<View>> WeatherMapWindow
+class WeatherMapPresenter
+<<Presenter>> WeatherMapPresenter
+class WeatherService
+<<Model>> WeatherService
+class WeatherServiceImpl
+WeatherService <|.. WeatherServiceImpl : implements
+WeatherMapPresenter --> WeatherMapWindow : updates view
+WeatherMapPresenter --> WeatherService : queries model
+WeatherMapWindow ..> WeatherMapPresenter : delegates user actions

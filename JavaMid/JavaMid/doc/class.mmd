@@ -1,111 +1,116 @@
+---
+id: class-diagram
+title: Patrones implementados (Class Diagram)
+---
 classDiagram
+  direction LR
 
-class WeatherDTO {
-  +location
-  +tempC
-  +humidity
-  +windSpeed
-  +windDirection
-  +condition
-  +provider
-  +timestamp
-}
+  namespace com.javamid.client {
+    class WeatherClient {
+      <<interface>>
+      +getHistoricalWeather(lat, lon, start, end) JsonNode
+    }
+    class OpenMeteoClient
+    class OpenMeteoAdapter {
+      +delegate: OpenMeteoClient
+    }
+    class CachingWeatherClient {
+      +delegate: WeatherClient
+      +ttlMillis: long
+    }
+    class WeatherClientFactory {
+      +getDefault() WeatherClient
+    }
+  }
 
-class LocationDTO {
-  +name
-  +country
-  +lat
-  +lon
-}
+  com.javamid.client.OpenMeteoAdapter ..|> com.javamid.client.WeatherClient : Adapter
+  com.javamid.client.CachingWeatherClient ..|> com.javamid.client.WeatherClient : Decorator
+  com.javamid.client.OpenMeteoAdapter --> com.javamid.client.OpenMeteoClient : delegates
+  com.javamid.client.CachingWeatherClient --> com.javamid.client.WeatherClient : wraps
+  com.javamid.client.WeatherClientFactory ..> com.javamid.client.CachingWeatherClient : creates
+  com.javamid.client.WeatherClientFactory ..> com.javamid.client.OpenMeteoAdapter : creates
+  com.javamid.client.WeatherClientFactory ..> com.javamid.client.OpenMeteoClient : creates
 
-class ConditionDTO {
-  +code
-  +text
-  +icon
-}
+  namespace com.javamid.provider {
+    class WeatherProvider {
+      <<interface>>
+      +getCurrent(location) WeatherDTO
+      +getForecast(location, days) ForecastDTO
+    }
+    class OpenMeteoProvider
+    class ProviderFactory {
+      +getProvider(name) WeatherProvider
+    }
+  }
 
-class ForecastDTO {
-  +days
-}
+  com.javamid.provider.OpenMeteoProvider ..|> com.javamid.provider.WeatherProvider : Implementation
+  com.javamid.provider.ProviderFactory ..> com.javamid.provider.OpenMeteoProvider : creates
 
-class ForecastDayDTO {
-  +date
-  +minTempC
-  +maxTempC
-  +avgTempC
-  +condition
-}
+  namespace com.javamid.service {
+    class WeatherService {
+      <<interface>>
+      +getCurrentWeather(location) WeatherDTO
+      +getForecast(location, days) ForecastDTO
+      +getWeatherForPoints(points) List~WeatherPointDTO~
+    }
+    class WeatherServiceImpl {
+      +provider: WeatherProvider
+    }
+    class StationManager
+    class WeatherDataManager
+  }
 
-class WeatherProvider
-WeatherProvider : +getCurrent()
-WeatherProvider : +getForecast()
+  com.javamid.service.WeatherServiceImpl ..|> com.javamid.service.WeatherService : Implementation
+  com.javamid.service.WeatherServiceImpl --> com.javamid.provider.WeatherProvider : uses
 
-class OpenMeteoProvider
-OpenMeteoProvider : +getCurrent()
-OpenMeteoProvider : +getForecast()
+  namespace com.javamid.flyweight {
+    class MarkerStyle
+    class MarkerStyleFactory {
+      +getActiveStyle() MarkerStyle
+      +getInactiveStyle() MarkerStyle
+      +getClusterStyle() MarkerStyle
+    }
+    class WeatherFlyweightFactory {
+      +getStyleForWind(speed, dir) ParticleStyle
+      +getCacheSize() int
+      +clearCache()
+    }
+    class ParticleStyle
+  }
 
-class WeatherApiProvider
-WeatherApiProvider : +getCurrent()
-WeatherApiProvider : +getForecast()
+  com.javamid.flyweight.MarkerStyleFactory ..> com.javamid.flyweight.MarkerStyle : returns
+  com.javamid.flyweight.WeatherFlyweightFactory ..> com.javamid.flyweight.ParticleStyle : returns
 
-class OpenWeatherProvider
-OpenWeatherProvider : +getCurrent()
-OpenWeatherProvider : +getForecast()
+  namespace com.javamid.ui.overlay {
+    class WeatherOverlay {
+      <<interface>>
+      +setActive(active)
+      +isActive() bool
+      +setStations(stations)
+      +setInfluenceRadiusKm(km)
+      +onMapChanged()
+    }
+  }
 
-class WeatherService {
-  +getCurrentWeather()
-  +getForecast()
-}
+  namespace com.javamid.ui {
+    class WeatherMapPresenter {
+      +stationManager: StationManager
+      +weatherClient: WeatherClient
+      +humidityOverlayPanel: HumidityOverlayPanel
+      +temperatureOverlayPanel: TemperatureOverlayPanel
+    }
+    class WeatherMapWindow {
+      +presenter: WeatherMapPresenter
+    }
+    class StationMarkerPanel
+    class HumidityOverlayPanel
+    class TemperatureOverlayPanel
+  }
 
-class WeatherServiceImpl {
-  -provider
-  +getCurrentWeather()
-  +getForecast()
-}
-
-class WeatherController {
-  +getWeather()
-  +getForecast()
-}
-
-class LayerService {
-  -apiClient
-  -factory
-  +getLayers()
-}
-
-class LayerFactory {
-  +getGlyph()
-  +releaseGlyph()
-}
-
-class Glyph {
-  +id
-  +renderParameters
-}
-
-class LayerStrategy
-LayerStrategy : +buildLayer()
-
-class Temperature
-class Wind
-class Precip
-
-WeatherProvider <|.. OpenMeteoProvider
-WeatherProvider <|.. WeatherApiProvider
-WeatherProvider <|.. OpenWeatherProvider
-ProviderFactory --> WeatherProvider
-WeatherServiceImpl --> WeatherProvider
-WeatherService <|.. WeatherServiceImpl
-WeatherController --> WeatherService
-
-LayerService --> WeatherProvider
-LayerService --> LayerFactory
-LayerFactory --> Glyph
-Temperature ..|> LayerStrategy
-Wind ..|> LayerStrategy
-Precip ..|> LayerStrategy
-LayerService --> LayerStrategy
-
-WeatherRaw --> WeatherDTO
-ForecastRaw --> ForecastDTO
+  com.javamid.ui.WeatherMapPresenter --> com.javamid.service.StationManager : uses
+  com.javamid.ui.WeatherMapPresenter --> com.javamid.client.WeatherClient : uses
+  com.javamid.ui.WeatherMapPresenter --> com.javamid.ui.HumidityOverlayPanel : coordinates
+  com.javamid.ui.WeatherMapPresenter --> com.javamid.ui.TemperatureOverlayPanel : coordinates
+  com.javamid.ui.HumidityOverlayPanel ..|> com.javamid.ui.overlay.WeatherOverlay : Realization
+  com.javamid.ui.TemperatureOverlayPanel ..|> com.javamid.ui.overlay.WeatherOverlay : Realization
+  com.javamid.ui.WeatherMapWindow --> com.javamid.ui.WeatherMapPresenter : holds

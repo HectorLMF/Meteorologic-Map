@@ -1,0 +1,132 @@
+---
+title: JavaMid - Weather Map Application
+config:
+  class:
+    hideEmptyMembersBox: true
+---
+classDiagram
+    direction LR
+
+    %% === ENTRY POINT ===
+    class JavaMidApplication
+    class WeatherController
+
+    %% === SERVICE ===
+    class WeatherService {
+        <<interface>>
+    }
+    class WeatherServiceImpl
+    class StationManager
+    class WeatherDataManager
+    class AsyncExecutor
+
+    %% === PROVIDER ===
+    class WeatherProvider {
+        <<interface>>
+    }
+    class OpenMeteoProvider
+    class ProviderFactory
+
+    %% === CLIENT ===
+    class WeatherClient {
+        <<interface>>
+    }
+    class CachingWeatherClient
+    class OpenMeteoAdapter
+    class OpenMeteoClient
+    class WeatherClientFactory
+    class MeteostatApiClient
+
+    %% === MODEL ===
+    class WeatherDTO
+    class WeatherPointDTO
+    class WeatherStation
+    class LocationDTO
+    class ConditionDTO
+    class ForecastDTO
+    class ForecastDayDTO
+
+    %% === CONFIG ===
+    class MapConfig
+
+    %% === FLYWEIGHT ===
+    class WeatherFlyweightFactory
+    class MarkerStyleFactory
+    class ParticleStyle
+    class MarkerStyle
+
+    %% === UI OVERLAY ===
+    class WeatherOverlay {
+        <<interface>>
+    }
+    class OverlayManager
+    class OverlayMode {
+        <<enumeration>>
+    }
+
+    %% === UI PRESENTER ===
+    class WeatherMapPresenter
+
+    %% === UI COMPONENTS ===
+    class WeatherMapWindow
+    class WindOverlayPanel
+    class HumidityOverlayPanel
+    class TemperatureOverlayPanel
+    class StationMarkerPanel
+    class LegendPanel
+    class UIComponentFactory
+    class TranslucentPanel
+
+    %% === UI WIND ===
+    class WindParticle
+    class WindParticlePool
+    class StationParticlePool
+    class WindLayerPainter
+    class WindCompassPanel
+    class VelocityCache
+    class SpatialGrid
+
+    %% === UI TILES ===
+    class CustomOSMTileFactory
+    class LoggingOSMTileFactoryInfo
+
+    %% === UI METRICS ===
+    class PerformanceMetrics
+
+    %% === UTIL ===
+    class GeoUtils
+    class EventBus
+    class TimedCache
+    class Config
+    class ApiKeyStore
+    class WeatherMapper
+
+    %% === RELACIONES PRINCIPALES ===
+    JavaMidApplication --> WeatherMapWindow
+    WeatherController --> WeatherService
+    WeatherService <|.. WeatherServiceImpl
+    WeatherServiceImpl --> WeatherProvider
+    WeatherProvider <|.. OpenMeteoProvider
+    ProviderFactory --> WeatherProvider
+    
+    WeatherClient <|.. CachingWeatherClient
+    WeatherClient <|.. OpenMeteoAdapter
+    CachingWeatherClient o-- WeatherClient
+    OpenMeteoAdapter o-- OpenMeteoClient
+    
+    WeatherDTO o-- LocationDTO
+    WeatherDTO o-- ConditionDTO
+    ForecastDTO o-- ForecastDayDTO
+    
+    WeatherFlyweightFactory --> ParticleStyle
+    MarkerStyleFactory --> MarkerStyle
+    
+    OverlayManager o-- WeatherOverlay
+    WeatherOverlay <|.. HumidityOverlayPanel
+    WeatherOverlay <|.. TemperatureOverlayPanel
+    
+    WeatherMapWindow o-- OverlayManager
+    WeatherMapWindow o-- WeatherMapPresenter
+    WindOverlayPanel o-- WindParticle
+    WindParticle o-- ParticleStyle
+    StationMarkerPanel --> MarkerStyle

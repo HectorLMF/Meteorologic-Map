@@ -1,0 +1,13 @@
+---
+id: pattern-adapter
+title: Adapter Pattern (WeatherClient)
+---
+classDiagram
+class WeatherClient
+<<interface>> WeatherClient
+class OpenMeteoClient
+class OpenMeteoAdapter {
+  -client: OpenMeteoClient
+}
+WeatherClient <|.. OpenMeteoAdapter : implements
+OpenMeteoAdapter --> OpenMeteoClient : adapts

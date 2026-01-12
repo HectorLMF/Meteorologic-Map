@@ -1,0 +1,67 @@
+---
+title: Patrón State - OverlayManager
+---
+classDiagram
+    direction TB
+
+    class OverlayManager {
+        -Map~OverlayMode, WeatherOverlay~ overlays
+        -OverlayMode activeMode
+        +register(mode, overlay)
+        +setActiveMode(mode)
+        +getActiveMode() OverlayMode
+    }
+
+    class OverlayMode {
+        <<enumeration>>
+        NONE
+        HUMIDITY
+        TEMPERATURE
+    }
+
+    class WeatherOverlay {
+        <<interface>>
+        +setActive(active)
+        +isActive() bool
+        +setStations(stations)
+        +setInfluenceRadiusKm(radiusKm)
+        +onMapChanged()
+    }
+
+    class HumidityOverlayPanel {
+        -bool active
+        -List~WeatherStation~ stations
+        +setActive(active)
+        +isActive() bool
+        +paintComponent(g)
+    }
+
+    class TemperatureOverlayPanel {
+        -bool active
+        -List~WeatherStation~ stations
+        +setActive(active)
+        +isActive() bool
+        +paintComponent(g)
+    }
+
+    class WindOverlayPanel {
+        -bool active
+        -List~WindParticle~ particles
+        +setActive(active)
+        +isActive() bool
+        +paintComponent(g)
+    }
+
+    %% Relaciones del patrón State
+    OverlayManager --> OverlayMode : estado actual
+    OverlayManager o-- WeatherOverlay : gestiona
+
+    WeatherOverlay <|.. HumidityOverlayPanel : implements
+    WeatherOverlay <|.. TemperatureOverlayPanel : implements
+    WeatherOverlay <|.. WindOverlayPanel : implements
+
+    note for OverlayManager "Context\nGestiona el estado activo\ny delega comportamiento\nal overlay correspondiente"
+    
+    note for OverlayMode "State\nDefine los posibles\nestados del sistema"
+    
+    note for WeatherOverlay "State Interface\nDefine operaciones\nque varían según estado"

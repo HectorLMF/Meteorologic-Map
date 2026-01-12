@@ -1,5 +1,8 @@
 package com.javamid.ui;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryUsage;
 import java.util.logging.Logger;
 
 /**
@@ -38,6 +41,12 @@ public class PerformanceMetrics {
     private double gridFillRatio = 0.0;
     
     private final long startTime = System.currentTimeMillis();
+
+    // JVM Memory metrics (bytes)
+    private long usedHeapBytes = 0;
+    private long committedHeapBytes = 0;
+    private long maxHeapBytes = 0;
+    private long usedNonHeapBytes = 0;
     
     /**
      * Registra el inicio de un frame.
@@ -68,6 +77,9 @@ public class PerformanceMetrics {
         averageFrameTime = sum / FRAME_SAMPLE_SIZE;
         
         frameCount++;
+
+        // Actualizar métricas de memoria en cada frame
+        updateMemoryMetrics();
     }
     
     /**
@@ -104,6 +116,20 @@ public class PerformanceMetrics {
     public void recordGarbageCollection(long duration) {
         gcCount++;
         totalGcTime += duration;
+    }
+
+    /**
+     * Actualiza métricas de memoria de la JVM.
+     */
+    public void updateMemoryMetrics() {
+        MemoryMXBean mxBean = ManagementFactory.getMemoryMXBean();
+        MemoryUsage heap = mxBean.getHeapMemoryUsage();
+        MemoryUsage nonHeap = mxBean.getNonHeapMemoryUsage();
+
+        usedHeapBytes = heap.getUsed();
+        committedHeapBytes = heap.getCommitted();
+        maxHeapBytes = heap.getMax();
+        usedNonHeapBytes = nonHeap.getUsed();
     }
     
     /**
@@ -159,6 +185,10 @@ public class PerformanceMetrics {
         public final double cacheHitRate;
         public final int gridUpdates;
         public final double gridFillRatio;
+        public final long usedHeapBytes;
+        public final long committedHeapBytes;
+        public final long maxHeapBytes;
+        public final long usedNonHeapBytes;
         
         private PerformanceReport(PerformanceMetrics metrics) {
             this.elapsedTime = System.currentTimeMillis() - metrics.startTime;
@@ -177,6 +207,11 @@ public class PerformanceMetrics {
                 : 0;
             this.gridUpdates = metrics.gridUpdates;
             this.gridFillRatio = metrics.gridFillRatio;
+
+            this.usedHeapBytes = metrics.usedHeapBytes;
+            this.committedHeapBytes = metrics.committedHeapBytes;
+            this.maxHeapBytes = metrics.maxHeapBytes;
+            this.usedNonHeapBytes = metrics.usedNonHeapBytes;
         }
         
         @Override
@@ -195,6 +230,13 @@ public class PerformanceMetrics {
                 cacheHitRate * 100));
             sb.append(String.format("Grid: updates=%d, fillRatio=%.0f%%\n", 
                 gridUpdates, gridFillRatio * 100));
+            // Mostrar memoria en MB
+            double usedHeapMb = usedHeapBytes / (1024.0 * 1024.0);
+            double committedHeapMb = committedHeapBytes / (1024.0 * 1024.0);
+            double maxHeapMb = maxHeapBytes > 0 ? maxHeapBytes / (1024.0 * 1024.0) : 0;
+            double usedNonHeapMb = usedNonHeapBytes / (1024.0 * 1024.0);
+            sb.append(String.format("Memory (MB): heap used=%.2f, committed=%.2f, max=%.2f | non-heap used=%.2f\n",
+                usedHeapMb, committedHeapMb, maxHeapMb, usedNonHeapMb));
             sb.append("==========================================\n");
             return sb.toString();
         }

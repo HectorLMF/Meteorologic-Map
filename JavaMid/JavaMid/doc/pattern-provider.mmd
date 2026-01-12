@@ -1,0 +1,13 @@
+---
+id: pattern-provider
+title: Provider Pattern (OpenMeteoProvider)
+---
+classDiagram
+class WeatherClient
+class WeatherProvider
+<<interface>> WeatherProvider
+class OpenMeteoProvider {
+  -client: WeatherClient
+}
+WeatherProvider <|.. OpenMeteoProvider : implements
+OpenMeteoProvider o--> WeatherClient : uses

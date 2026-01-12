@@ -1,0 +1,135 @@
+---
+title: JavaMid - Weather Map Application
+config:
+  class:
+    hideEmptyMembersBox: true
+---
+classDiagram
+    direction TB
+
+    namespace Main {
+        class JavaMidApplication
+    }
+
+    namespace controller {
+        class WeatherController
+    }
+
+    namespace service {
+        class WeatherService {
+            <<interface>>
+        }
+        class WeatherServiceImpl
+        class StationManager
+        class WeatherDataManager
+        class AsyncExecutor
+    }
+
+    namespace provider {
+        class WeatherProvider {
+            <<interface>>
+        }
+        class OpenMeteoProvider
+        class ProviderFactory
+    }
+
+    namespace client {
+        class WeatherClient {
+            <<interface>>
+        }
+        class CachingWeatherClient
+        class OpenMeteoAdapter
+        class OpenMeteoClient
+        class WeatherClientFactory
+        class MeteostatApiClient
+    }
+
+    namespace model {
+        class WeatherDTO
+        class WeatherPointDTO
+        class WeatherStation
+        class LocationDTO
+        class ConditionDTO
+        class ForecastDTO
+        class ForecastDayDTO
+    }
+
+    namespace config {
+        class MapConfig
+    }
+
+    namespace flyweight {
+        class WeatherFlyweightFactory
+        class MarkerStyleFactory
+        class ParticleStyle
+        class MarkerStyle
+    }
+
+    namespace ui_overlay {
+        class WeatherOverlay {
+            <<interface>>
+        }
+        class OverlayManager
+        class OverlayMode {
+            <<enumeration>>
+        }
+    }
+
+    namespace ui_presenter {
+        class WeatherMapPresenter
+    }
+
+    namespace ui {
+        class WeatherMapWindow
+        class WindOverlayPanel
+        class HumidityOverlayPanel
+        class TemperatureOverlayPanel
+        class StationMarkerPanel
+        class LegendPanel
+        class UIComponentFactory
+        class TranslucentPanel
+        class WindParticle
+        class WindParticlePool
+        class StationParticlePool
+        class WindLayerPainter
+        class WindCompassPanel
+        class VelocityCache
+        class SpatialGrid
+        class CustomOSMTileFactory
+        class LoggingOSMTileFactoryInfo
+        class PerformanceMetrics
+    }
+
+    namespace util {
+        class GeoUtils
+        class EventBus
+        class TimedCache
+        class Config
+        class ApiKeyStore
+        class WeatherMapper
+    }
+
+    %% Relaciones clave
+    JavaMidApplication --> WeatherMapWindow
+    WeatherController --> WeatherService
+    WeatherService <|.. WeatherServiceImpl
+    WeatherServiceImpl --> WeatherProvider
+    WeatherProvider <|.. OpenMeteoProvider
+    ProviderFactory --> WeatherProvider
+    WeatherClient <|.. CachingWeatherClient
+    WeatherClient <|.. OpenMeteoAdapter
+    CachingWeatherClient o-- WeatherClient
+    OpenMeteoAdapter o-- OpenMeteoClient
+    WeatherDTO o-- LocationDTO
+    WeatherDTO o-- ConditionDTO
+    ForecastDTO o-- ForecastDayDTO
+    WeatherFlyweightFactory --> ParticleStyle
+    MarkerStyleFactory --> MarkerStyle
+    OverlayManager o-- WeatherOverlay
+    WeatherOverlay <|.. HumidityOverlayPanel
+    WeatherOverlay <|.. TemperatureOverlayPanel
+    WeatherMapWindow o-- OverlayManager
+    WeatherMapWindow o-- WeatherMapPresenter
+    WindOverlayPanel o-- WindParticle
+    WindParticle o-- ParticleStyle
+    StationMarkerPanel --> MarkerStyle
